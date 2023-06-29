@@ -6,6 +6,16 @@ scannet/scannet_train_detection_data/
 *.out
 tensorboard_output/
 
+# scripts of exps in development which should not be tracked
+scripts/train_scanrefer_EXPnotrack.sh
+scripts/test_scanrefer_EXPnotrack.sh
+scripts/test_scanrefer_single_EXPnotrack.sh
+scripts/test_scannet_EXPnotrack.sh
+scripts/command.sh
+
+# exps log
+log/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

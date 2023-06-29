@@ -38,7 +38,7 @@ class GroundingEvaluator:
     """
 
     def __init__(self, only_root=True, thresholds=[0.25, 0.5],
-                 topks=[1, 5, 10], prefixes=[], filter_non_gt_boxes=False):
+                 topks=[1, 5, 10], prefixes=[], filter_non_gt_boxes=False, logger=None):
         """Initialize accumulators."""
         self.only_root = only_root
         self.thresholds = thresholds
@@ -46,6 +46,7 @@ class GroundingEvaluator:
         self.prefixes = prefixes
         self.filter_non_gt_boxes = filter_non_gt_boxes
         self.reset()
+        self.logger = logger
 
     def reset(self):
         """Reset accumulators to empty."""
@@ -80,8 +81,9 @@ class GroundingEvaluator:
         for prefix in self.prefixes:
             for mode in ['bbs', 'bbf']:
                 for t in self.thresholds:
-                    print(
-                        prefix, mode_str[mode], 'Acc%.2f:' % t,
+                    self.logger.info(
+                    # print(
+                        prefix + ' ' + mode_str[mode] + ' ' +  'Acc%.2f:' % t + ' ' + 
                         ', '.join([
                             'Top-%d: %.5f' % (
                                 k,
@@ -91,13 +93,13 @@ class GroundingEvaluator:
                             for k in self.topks
                         ])
                     )
-        print('\nAnalysis')
-        print('iou@0.25')
+        self.logger.info('\nAnalysis')
+        self.logger.info('iou@0.25')
         for field in ['easy', 'hard', 'vd', 'vid', 'unique', 'multi']:
-            print(field, self.dets[field] / self.gts[field])
-        print('iou@0.50')
+            self.logger.info(field + ' ' +  str(self.dets[field] / self.gts[field]))
+        self.logger.info('iou@0.50')
         for field in ['easy50', 'hard50', 'vd50', 'vid50', 'unique50', 'multi50']:
-            print(field, self.dets[field] / self.gts[field])
+            self.logger.info(field + ' ' +  str(self.dets[field] / self.gts[field]))
 
     def synchronize_between_processes(self):
         all_dets = misc.all_gather(self.dets)

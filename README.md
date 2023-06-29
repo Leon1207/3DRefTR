@@ -1,14 +1,3 @@
-# EDA: Explicit Text-Decoupling and Dense Alignment for 3D Visual Grounding (CVPR2023)
-
-> By [Yanmin Wu](https://yanmin-wu.github.io/), Xinhua Cheng, [Renrui Zhang](https://github.com/ZrrSkywalker), Zesen Cheng, [Jian Zhang*](http://villa.jianzhang.tech/)   
-This repo is the official implementation of "**EDA: Explicit Text-Decoupling and Dense Alignment for 3D Visual Grounding**". [CVPR2023]() | [Arxiv](https://arxiv.org/abs/2209.14941) | [Code](https://github.com/yanmin-wu/EDA)
-
-<figure>
-<p align="center" >
-<img src='./data/fig1.png' width=700 alt="Figure 1"/>
-</p>
-</figure>
-
 ## 0. Installation
 
 + **(1)** Install environment with `environment.yml` file:

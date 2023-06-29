@@ -158,11 +158,12 @@ class TrainTester(BaseTrainTester):
         evaluator = GroundingEvaluator(
             only_root=True, thresholds=[0.25, 0.5],     # TODO only_root=True
             topks=[1, 5, 10], prefixes=prefixes,
-            filter_non_gt_boxes=args.butd_cls
+            filter_non_gt_boxes=args.butd_cls,
+            logger=self.logger
         )
 
         # NOTE Main eval branch
-        test_loader = tqdm(test_loader)
+        test_loader = tqdm(test_loader, ascii=True)
         for batch_idx, batch_data in enumerate(test_loader):
             # note forward and compute loss
             stat_dict, end_points = self._main_eval_branch(     
@@ -255,7 +256,7 @@ class TrainTester(BaseTrainTester):
             25, 27, 29, 31, 32, 34, 36, 38, 39, 41, 42, 44, 45
         ])  # 18 token span
 
-        test_loader = tqdm(test_loader)
+        test_loader = tqdm(test_loader, ascii=True)
         for batch_idx, batch_data in enumerate(test_loader):
             # note eval
             stat_dict, end_points = self._main_eval_branch(

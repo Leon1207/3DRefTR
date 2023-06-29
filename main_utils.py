@@ -463,7 +463,7 @@ class BaseTrainTester:
         model.train()  # set model to training mode
 
         # Loop over batches
-        train_loader = tqdm(train_loader)
+        train_loader = tqdm(train_loader, ascii=True)
         for batch_idx, batch_data in enumerate(train_loader):
             # Move to GPU
             batch_data = self._to_gpu(batch_data)
