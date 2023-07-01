@@ -346,7 +346,7 @@ class BaseTrainTester:
         # note Distributed Data-Parallel Training (DDP)
         model = DistributedDataParallel(
             model, device_ids=[args.local_rank],
-            broadcast_buffers=False  # , find_unused_parameters=True
+            broadcast_buffers=False, find_unused_parameters=True
         )
 
         # Check for a checkpoint

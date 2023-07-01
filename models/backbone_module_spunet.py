@@ -217,8 +217,9 @@ class SpUNetBase(nn.Module):
         feat = feat.permute(0, 2, 1).reshape(B * N, 3)
         batch = torch.arange(0, B).unsqueeze(-1).expand(B, N).reshape(B * N).cuda()
 
-        discrete_coord = torch.floor(coord / self.scale)
-        discrete_coord -= discrete_coord.min(0).values
+        discrete_coord = torch.floor(coord / self.scale).int()
+        discrete_coord_min = discrete_coord.min(0).values
+        discrete_coord -= discrete_coord_min
 
         sparse_shape = torch.add(torch.max(discrete_coord, dim=0).values, 1).tolist()  # [314.0, 423.0, 131.0]
         x = spconv.SparseConvTensor(
@@ -252,7 +253,7 @@ class SpUNetBase(nn.Module):
         for i in range(B):
             idx = x.indices[:, 0] == i  # fetch each batch point cloud
             f = x.features[idx].permute(1, 0)  # [288, 3658]
-            c = x.indices[idx][:, 1:].float() * self.scale  # [3658, 3]
+            c = (x.indices[idx][:, 1:].float() + discrete_coord_min) * self.scale  # [3658, 3]
             # random sampling 1024 points
             N, sample_num = f.shape[-1], 1024
             if N < sample_num:
@@ -269,6 +270,6 @@ class SpUNetBase(nn.Module):
         end_points['fp2_xyz'] = torch.stack(end_points['fp2_xyz'], dim=0)  # [B, 1024, 3]
         end_points['fp2_features'] = torch.stack(end_points['fp2_features'], dim=0)  # [B, 288, 1024]
         
-        print(end_points['fp2_xyz'], end_points['fp2_features'])
+        # print(end_points['fp2_xyz'], end_points['fp2_features'])
 
         return end_points
