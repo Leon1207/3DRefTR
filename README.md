@@ -1,3 +1,9 @@
+## TODO
++ [ ] introduce spconv as backbone
++ [ ] replace seedpoints with superpoints for kps
++ [ ] add segmentation head in each decoder layer and introduce segmentation GT in training for 3D-RES
++ [ ] Visualization
+
 ## 0. Installation
 
 + **(1)** Install environment with `environment.yml` file:
