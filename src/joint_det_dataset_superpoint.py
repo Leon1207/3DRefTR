@@ -68,20 +68,20 @@ class Joint3DDataset(Dataset):
         # self.augment = False
         self.use_multiview = use_multiview
         self.data_path = data_path
-        self.visualize = False  # manually set this to True to debug
+        self.visualize = True  # manually set this to True to debug
         self.butd = butd
         self.butd_gt = butd_gt
         self.butd_cls = butd_cls
         self.joint_det = (  # joint usage of detection/grounding phrases
-            'scannet' in dataset_dict
-            and len(dataset_dict.keys()) > 1
-            and self.split == 'train'
+                'scannet' in dataset_dict
+                and len(dataset_dict.keys()) > 1
+                and self.split == 'train'
         )
         self.augment_det = augment_det
         self.wo_obj_name = wo_obj_name
 
         self.mean_rgb = np.array([109.8, 97.2, 83.8]) / 256
-        
+
         # step 1. semantic label
         self.label_map = read_label_mapping(
             'data/meta_data/scannetv2-labels.combined.tsv',
@@ -97,7 +97,7 @@ class Joint3DDataset(Dataset):
             'data/meta_data/scannetv2-labels.combined.tsv',
             label_from='raw_category',
             label_to='nyu40class'
-        )   
+        )
 
         self.multiview_path = os.path.join(
             f'{self.data_path}/scanrefer_2d_feats',
@@ -110,31 +110,37 @@ class Joint3DDataset(Dataset):
         # self.tokenizer = RobertaTokenizerFast.from_pretrained("roberta-base")
         # 2) offline
         self.tokenizer = RobertaTokenizerFast.from_pretrained(f'{self.data_path}roberta-base/', local_files_only=True)
-        
+
         if os.path.exists('data/cls_results.json'):
             with open('data/cls_results.json') as fid:
                 self.cls_results = json.load(fid)
 
         print('Loading %s files, take a breath!' % split)
-        
+
         # step 3. generate or load train/val_v3scans.pkl
         if not os.path.exists(f'{self.data_path}/{split}_v3scans.pkl'):
             save_data(f'{data_path}/{split}_v3scans.pkl', split, data_path)
         self.scans = unpickle_data(f'{self.data_path}/{split}_v3scans.pkl')
         self.scans = list(self.scans)[0]
-        
+
+        # fetch superpoints
+        self.superpoints = {}
+        for scan in self.scans:
+            superpoint = torch.load(os.path.join("/userhome/lyd/RES/superpoint", self.split, scan + "_superpoint.pth"))
+            self.superpoints[scan] = superpoint
+
         # step 4. load text dataset
         if self.split != 'train':
             self.annos = self.load_annos(test_dataset)
         else:
             self.annos = []
-            for dset, cnt in dataset_dict.items():  
+            for dset, cnt in dataset_dict.items():
                 if cnt > 0:
                     _annos = self.load_annos(dset)
                     self.annos += (_annos * cnt)
 
-        # if self.visualize:
-        #     wandb.init(project="vis", name="debug")
+        if self.visualize:
+            wandb.init(project="vis", name="debug")
 
     # BRIEF load text data
     def load_annos(self, dset):
@@ -143,8 +149,8 @@ class Joint3DDataset(Dataset):
             'nr3d': self.load_nr3d_annos,
             'sr3d': self.load_sr3d_annos,
             'sr3d+': self.load_sr3dplus_annos,
-            'scanrefer': self.load_scanrefer_annos, # scanrefer
-            'scannet': self.load_scannet_annos      # scannet detection augmentation
+            'scanrefer': self.load_scanrefer_annos,  # scanrefer
+            'scannet': self.load_scannet_annos  # scannet detection augmentation
         }
         annos = loaders[dset]()
         if self.overfit:
@@ -179,8 +185,8 @@ class Joint3DDataset(Dataset):
                 }
                 for line in csv_reader
                 if line[headers['scan_id']] in scan_ids
-                and
-                str(line[headers['mentions_target_class']]).lower() == 'true'
+                   and
+                   str(line[headers['mentions_target_class']]).lower() == 'true'
             ]
 
             # text decoupling
@@ -211,15 +217,15 @@ class Joint3DDataset(Dataset):
                 }
                 for line in csv_reader
                 if line[headers['scan_id']] in scan_ids
-                # and
-                # str(line[headers['mentions_target_class']]).lower() == 'true' # NOTE BUTD ignores 5% of hard samples
-                and
-                (
-                    str(line[headers['correct_guess']]).lower() == 'true'
-                    or split != 'test'
-                )
+                   # and
+                   # str(line[headers['mentions_target_class']]).lower() == 'true' # NOTE BUTD ignores 5% of hard samples
+                   and
+                   (
+                           str(line[headers['correct_guess']]).lower() == 'true'
+                           or split != 'test'
+                   )
             ]
-        
+
         Scene_graph_parse(annos)
 
         # Add distractor info
@@ -229,8 +235,8 @@ class Joint3DDataset(Dataset):
                 for ind in
                 range(len(self.scans[anno['scan_id']].three_d_objects))
                 if self.scans[anno['scan_id']].get_object_instance_label(ind)
-                == anno['target']
-                and ind != anno['target_id']
+                   == anno['target']
+                   and ind != anno['target_id']
             ]
 
         # NOTE [BUTD-DETR] Filter out sentences that do not explicitly mention the target class
@@ -238,7 +244,6 @@ class Joint3DDataset(Dataset):
 
         return annos
 
-    
     # BRIEF load ScanRefer
     def load_scanrefer_annos(self):
         """Load annotations of ScanRefer."""
@@ -253,7 +258,7 @@ class Joint3DDataset(Dataset):
         if self.wo_obj_name != "None":
             with open(self.wo_obj_name) as f:
                 reader = json.load(f)
-        
+
         # STEP 1. load utterance
         annos = [
             {
@@ -263,8 +268,8 @@ class Joint3DDataset(Dataset):
                 'distractor_ids': [],
                 'utterance': ' '.join(anno['token']),
                 'target': ' '.join(str(anno['object_name']).split('_')),
-                'anchors': [],      
-                'anchor_ids': [],   
+                'anchors': [],
+                'anchor_ids': [],
                 'dataset': 'scanrefer'
             }
             for anno in reader
@@ -286,7 +291,7 @@ class Joint3DDataset(Dataset):
         #             + ' ' + anno['target'] + ' . '
         #             + ' . '.join(anno['utterance'].split(' . ')[1:])
         #         )
-        
+
         # STEP 3. Add distractor info
         scene2obj = defaultdict(list)
         sceneobj2used = defaultdict(list)
@@ -300,16 +305,16 @@ class Joint3DDataset(Dataset):
             ]
             labels = [DC18.type2class.get(lbl, 17) for lbl in nyu_labels]
             anno['distractor_ids'] = [
-                ind
-                for ind in
-                range(len(self.scans[anno['scan_id']].three_d_objects))
-                if labels[ind] == labels[anno['target_id']]
-                and ind != anno['target_id']
-            ][:32]
+                                         ind
+                                         for ind in
+                                         range(len(self.scans[anno['scan_id']].three_d_objects))
+                                         if labels[ind] == labels[anno['target_id']]
+                                            and ind != anno['target_id']
+                                     ][:32]
             if anno['target_id'] not in sceneobj2used[anno['scan_id']]:
                 sceneobj2used[anno['scan_id']].append(anno['target_id'])
                 scene2obj[anno['scan_id']].append(labels[anno['target_id']])
-        
+
         # STEP 4. Add unique-multi
         for anno in annos:
             if anno['scan_id'] not in list(self.scans.keys()):
@@ -324,11 +329,10 @@ class Joint3DDataset(Dataset):
             ]
             labels = [DC18.type2class.get(lbl, 17) for lbl in nyu_labels]
             anno['unique'] = (
-                np.array(scene2obj[anno['scan_id']])
-                == labels[anno['target_id']]
-            ).sum() == 1
+                                     np.array(scene2obj[anno['scan_id']])
+                                     == labels[anno['target_id']]
+                             ).sum() == 1
         return annos
-
 
     # BRIEF scannet detection prompt.
     def load_scannet_annos(self):
@@ -368,7 +372,7 @@ class Joint3DDataset(Dataset):
                 if a not in {965, 977}
             ]
         return annos
-    
+
     # BRIEF smaple classes for detection prompt
     def _sample_classes(self, scan_id):
         """Sample classes for the scannet detection sentences."""
@@ -392,7 +396,7 @@ class Joint3DDataset(Dataset):
                 'other furniture'
             ]
         return ret
-    
+
     # BRIEF constract utterance for scannet
     def _create_scannet_utterance(self, sampled_classes):
         if self.split == 'train' and self.random_utt:
@@ -416,14 +420,14 @@ class Joint3DDataset(Dataset):
                 self.multiview_path, "r", libver="latest"
             )
         return self.multiview_data[pid][scan_id]
-    
+
     # BRIEF point cloud augmentation
     def _augment(self, pc, color, rotate):
         augmentations = {}
 
         # Rotate/flip only if we don't have a view_dep sentence
         if rotate:
-            theta_z = 90*np.random.randint(0, 4) + (2*np.random.rand() - 1) * 5
+            theta_z = 90 * np.random.randint(0, 4) + (2 * np.random.rand() - 1) * 5
             # Flipping along the YZ plane
             augmentations['yz_flip'] = np.random.random() > 0.5
             if augmentations['yz_flip']:
@@ -433,15 +437,15 @@ class Joint3DDataset(Dataset):
             if augmentations['xz_flip']:
                 pc[:, 1] = -pc[:, 1]
         else:
-            theta_z = (2*np.random.rand() - 1) * 5
+            theta_z = (2 * np.random.rand() - 1) * 5
         augmentations['theta_z'] = theta_z
         pc[:, :3] = rot_z(pc[:, :3], theta_z)
         # Rotate around x
-        theta_x = (2*np.random.rand() - 1) * 2.5
+        theta_x = (2 * np.random.rand() - 1) * 2.5
         augmentations['theta_x'] = theta_x
         pc[:, :3] = rot_x(pc[:, :3], theta_x)
         # Rotate around y
-        theta_y = (2*np.random.rand() - 1) * 2.5
+        theta_y = (2 * np.random.rand() - 1) * 2.5
         augmentations['theta_y'] = theta_y
         pc[:, :3] = rot_y(pc[:, :3], theta_y)
 
@@ -455,16 +459,16 @@ class Joint3DDataset(Dataset):
         pc[:, :3] += augmentations['shift']
 
         # Scale
-        augmentations['scale'] = 0.98 + 0.04*np.random.random()
+        augmentations['scale'] = 0.98 + 0.04 * np.random.random()
         pc[:, :3] *= augmentations['scale']
 
         # Color
         if color is not None:
             color += self.mean_rgb
-            color *= 0.98 + 0.04*np.random.random((len(color), 3))
+            color *= 0.98 + 0.04 * np.random.random((len(color), 3))
             color -= self.mean_rgb
         return pc, color, augmentations
-    
+
     # BRIEF get point clouds
     def _get_pc(self, anno, scan):
         """Return a point cloud representation of current scene."""
@@ -493,12 +497,12 @@ class Joint3DDataset(Dataset):
         augmentations = {}
         if self.split == 'train' and self.augment:
             rotate_natural = (
-                anno['dataset'] in ('nr3d', 'scanrefer')
-                and self._augment_nr3d(anno['utterance'])
+                    anno['dataset'] in ('nr3d', 'scanrefer')
+                    and self._augment_nr3d(anno['utterance'])
             )
             rotate_sr3d = (
-                anno['dataset'].startswith('sr3d')
-                and rel_name not in VIEW_DEP_RELS
+                    anno['dataset'].startswith('sr3d')
+                    and rel_name not in VIEW_DEP_RELS
             )
             rotate_else = anno['dataset'] == 'scannet'
             rotate = rotate_sr3d or rotate_natural or rotate_else
@@ -515,14 +519,14 @@ class Joint3DDataset(Dataset):
             point_cloud = np.concatenate([point_cloud, multiview_data], 1)
 
         return point_cloud, augmentations, scan.color
-    
+
     # BRIEF get position label [scannet]
     def _get_token_positive_map(self, anno):
         """Return correspondence of boxes to tokens."""
         # Token start-end span in characters
         caption = ' '.join(anno['utterance'].replace(',', ' ,').split())
         caption = ' ' + caption + ' '
-        
+
         tokens_positive = np.zeros((MAX_NUM_OBJ, 2))
         if isinstance(anno['target'], list):
             cat_names = anno['target']
@@ -535,7 +539,7 @@ class Joint3DDataset(Dataset):
             len_ = len(cat_name)
             if start_span < 0:
                 start_span = caption.find(' ' + cat_name)
-                len_ = len(caption[start_span+1:].split()[0])
+                len_ = len(caption[start_span + 1:].split()[0])
             if start_span < 0:
                 start_span = caption.find(cat_name)
                 orig_start_span = start_span
@@ -544,7 +548,7 @@ class Joint3DDataset(Dataset):
                 len_ = len(cat_name) + orig_start_span - start_span
                 while caption[len_ + start_span] != ' ':
                     len_ += 1
-            
+
             end_span = start_span + len_
             assert start_span > -1, caption
             assert end_span > 0, caption
@@ -565,13 +569,12 @@ class Joint3DDataset(Dataset):
         other_entity_positive_map = np.zeros((MAX_NUM_OBJ, 256))
         rel_positive_map = np.zeros((MAX_NUM_OBJ, 256))
         auxi_entity_positive_map = np.zeros((MAX_NUM_OBJ, 256))
-        
+
         # main object component
         gt_map = get_positive_map(tokenized, tokens_positive[:len(cat_names)])
         positive_map[:len(cat_names)] = gt_map
         return tokens_positive, positive_map, modify_positive_map, pron_positive_map, \
-            other_entity_positive_map, auxi_entity_positive_map, rel_positive_map
-
+               other_entity_positive_map, auxi_entity_positive_map, rel_positive_map
 
     #################################################
     # BRIEF Get text position label by text parsing #
@@ -584,15 +587,15 @@ class Joint3DDataset(Dataset):
         graph_edge = anno["graph_edge"]
 
         # step main/modify(attri)/pron/other(auxi)/rel
-        target_char_span = np.zeros((MAX_NUM_OBJ, 2))   # target(main)
-        modify_char_span = np.zeros((MAX_NUM_OBJ, 2))   # modify(attri)
-        pron_char_span = np.zeros((MAX_NUM_OBJ, 2))     # pron
-        rel_char_span = np.zeros((MAX_NUM_OBJ, 2))      # rel
+        target_char_span = np.zeros((MAX_NUM_OBJ, 2))  # target(main)
+        modify_char_span = np.zeros((MAX_NUM_OBJ, 2))  # modify(attri)
+        pron_char_span = np.zeros((MAX_NUM_OBJ, 2))  # pron
+        rel_char_span = np.zeros((MAX_NUM_OBJ, 2))  # rel
         assert graph_node[0]['node_id'] == 0
         main_entity_target = graph_node[0]['target_char_span']
         main_entity_modify = graph_node[0]['mod_char_span']
-        main_entity_pron   = graph_node[0]['pron_char_span']
-        main_entity_rel   = graph_node[0]['rel_char_span']
+        main_entity_pron = graph_node[0]['pron_char_span']
+        main_entity_rel = graph_node[0]['rel_char_span']
 
         # other(auxi) object token
         other_target_char_span = np.zeros((MAX_NUM_OBJ, 2))
@@ -611,22 +614,22 @@ class Joint3DDataset(Dataset):
         # target(main obj.) token
         for t, target in enumerate(main_entity_target):
             target_char_span[t] = target
-            num_t = t+1
+            num_t = t + 1
         # modify(attribute) token
         for m, modify in enumerate(main_entity_modify):
             modify_char_span[m] = modify
-            num_m = m+1
+            num_m = m + 1
         # pron token
         for p, pron in enumerate(main_entity_pron):
             pron_char_span[p] = pron
-            num_p = p+1
+            num_p = p + 1
         for o, other in enumerate(other_entity_target):
             other_target_char_span[o] = other
-            num_o = o+1
+            num_o = o + 1
         # rel token add 0727
         for r, rel in enumerate(main_entity_rel):
             rel_char_span[r] = rel
-            num_r = r+1
+            num_r = r + 1
 
         tokenized = self.tokenizer.batch_encode_plus(
             [' '.join(anno['utterance'].replace(',', ' ,').split())],
@@ -643,7 +646,7 @@ class Joint3DDataset(Dataset):
         gt_map_p = get_positive_map(tokenized, pron_char_span[:num_p])
         gt_map_o = get_positive_map(tokenized, other_target_char_span[:num_o])
         gt_map_r = get_positive_map(tokenized, rel_char_span[:num_r])
-        
+
         gt_map_t = gt_map_t.sum(axis=0)
         gt_map_m = gt_map_m.sum(axis=0)
         gt_map_p = gt_map_p.sum(axis=0)
@@ -651,11 +654,11 @@ class Joint3DDataset(Dataset):
         gt_map_r = gt_map_r.sum(axis=0)
 
         # NOTE text position label
-        target_positive_map[:1] = gt_map_t          # main object
-        modify_positive_map[:1] = gt_map_m          # attribute
-        pron_positive_map[:1]   = gt_map_p          # pron
-        other_entity_positive_map[:1] = gt_map_o    # auxi obj
-        rel_positive_map[:1]   = gt_map_r           # relation
+        target_positive_map[:1] = gt_map_t  # main object
+        modify_positive_map[:1] = gt_map_m  # attribute
+        pron_positive_map[:1] = gt_map_p  # pron
+        other_entity_positive_map[:1] = gt_map_o  # auxi obj
+        rel_positive_map[:1] = gt_map_r  # relation
 
         # auxi
         auxi_entity_positive_map = np.zeros((MAX_NUM_OBJ, 256))
@@ -666,19 +669,18 @@ class Joint3DDataset(Dataset):
             auxi_entity_char_span = np.zeros((MAX_NUM_OBJ, 2))
             for a, auxi in enumerate(auxi_entity):
                 auxi_entity_char_span[a] = auxi
-                num_a = a+1
+                num_a = a + 1
             # position label
             gt_map_a = get_positive_map(tokenized, auxi_entity_char_span[:num_a])
             gt_map_a = gt_map_a.sum(axis=0)
             auxi_entity_positive_map[:1] = gt_map_a
 
-            # note SR3D 
+            # note SR3D
             if anno['dataset'] == 'sr3d':
                 target_positive_map[1] = gt_map_a
 
         return target_char_span, target_positive_map, modify_positive_map, pron_positive_map, \
-            other_entity_positive_map, auxi_entity_positive_map, rel_positive_map
-
+               other_entity_positive_map, auxi_entity_positive_map, rel_positive_map
 
     # BRIEF get GT Box.
     def _get_target_boxes(self, anno, scan):
@@ -697,7 +699,7 @@ class Joint3DDataset(Dataset):
         point_instance_label = -np.ones(len(scan.pc))
         for t, tid in enumerate(tids):
             point_instance_label[scan.three_d_objects[tid]['points']] = t
-        
+
         bboxes[:len(tids)] = np.stack([
             scan.get_object_bbox(tid).reshape(-1) for tid in tids
         ])
@@ -706,12 +708,12 @@ class Joint3DDataset(Dataset):
             bboxes[:, 3:] - bboxes[:, :3]
         ), 1)
         if self.split == 'train' and self.augment:  # jitter boxes
-            bboxes[:len(tids)] *= (0.95 + 0.1*np.random.random((len(tids), 6)))
+            bboxes[:len(tids)] *= (0.95 + 0.1 * np.random.random((len(tids), 6)))
         bboxes[len(tids):, :3] = 1000
-        
+
         box_label_mask = np.zeros(MAX_NUM_OBJ)
         box_label_mask[:len(tids)] = 1
-        
+
         return bboxes, box_label_mask, point_instance_label
 
     def _get_scene_objects(self, scan):
@@ -721,11 +723,11 @@ class Joint3DDataset(Dataset):
                 scan.get_object_instance_label(ind)
             ] in DC.nyu40id2class
             for ind in range(len(scan.three_d_objects))
-        ])[:MAX_NUM_OBJ]    # keep_ (object_num)
+        ])[:MAX_NUM_OBJ]  # keep_ (object_num)
         keep = np.array([False] * MAX_NUM_OBJ)
         keep[:len(keep_)] = keep_
 
-        # Class ids 
+        # Class ids
         cid = np.array([
             DC.nyu40id2class[self.label_map[scan.get_object_instance_label(k)]]
             for k, kept in enumerate(keep) if kept
@@ -746,12 +748,11 @@ class Joint3DDataset(Dataset):
         ), 1)
         all_bboxes[keep] = all_bboxes_
         if self.split == 'train' and self.augment:
-            all_bboxes *= (0.95 + 0.1*np.random.random((len(all_bboxes), 6)))
+            all_bboxes *= (0.95 + 0.1 * np.random.random((len(all_bboxes), 6)))
 
         # Which boxes we're interested for
         all_bbox_label_mask = keep
         return class_ids, all_bboxes, all_bbox_label_mask
-    
 
     # BRIEF Search for pseudo-labels of auxiliary objects [not used!]
     def _get_auxi_boxes(self, anno, class_ids, all_bboxes, all_bbox_label_mask, gt_bboxes):
@@ -765,7 +766,7 @@ class Joint3DDataset(Dataset):
             if auxi_label_lemma in self.label_map:
                 if self.label_map[auxi_label_lemma] not in list((DC.nyu40id2class).keys()):
                     return auxi_box
-                
+
                 cls_id = DC.nyu40id2class[self.label_map[auxi_label_lemma]]
                 dis_min = 100
                 target_box = gt_bboxes[0]
@@ -774,8 +775,8 @@ class Joint3DDataset(Dataset):
                         continue
                     if class_ids[idx] == cls_id:
                         dis = target_box[:3] - all_bboxes[idx][:3]
-                        dis = np.sum(dis**2)
-                        
+                        dis = np.sum(dis ** 2)
+
                         if dis < dis_min:
                             dis_min = dis
                             auxi_box = all_bboxes[idx]
@@ -805,8 +806,8 @@ class Joint3DDataset(Dataset):
         all_bboxes_ = np.array(detected_dict['box'])
         classes = detected_dict['class']
         cid = np.array([DC.nyu40id2class[
-            self.label_map[c]] for c in detected_dict['class']
-        ])
+                            self.label_map[c]] for c in detected_dict['class']
+                        ])
         all_bboxes_ = np.concatenate((
             (all_bboxes_[:, :3] + all_bboxes_[:, 3:]) * 0.5,
             all_bboxes_[:, 3:] - all_bboxes_[:, :3]
@@ -819,7 +820,7 @@ class Joint3DDataset(Dataset):
         all_detected_bboxes[:num_objs] = all_bboxes_
         all_detected_bbox_label_mask[:num_objs] = np.array([True] * num_objs)
         detected_class_ids[:num_objs] = cid
-        detected_logits[:num_objs] = detected_dict['logits']    # logits
+        detected_logits[:num_objs] = detected_dict['logits']  # logits
         # Match current augmentations
         if self.augment and self.split == 'train':
             all_det_pts = box2points(all_detected_bboxes).reshape(-1, 3)
@@ -833,14 +834,14 @@ class Joint3DDataset(Dataset):
             all_det_pts += augmentations['shift']
             all_det_pts *= augmentations['scale']
             all_detected_bboxes = points2box(all_det_pts.reshape(-1, 8, 3))
-        
+
         if self.augment_det and self.split == 'train':
             min_ = all_detected_bboxes.min(0)
             max_ = all_detected_bboxes.max(0)
             rand_box = (
-                (max_ - min_)[None]
-                * np.random.random(all_detected_bboxes.shape)
-                + min_
+                    (max_ - min_)[None]
+                    * np.random.random(all_detected_bboxes.shape)
+                    + min_
             )
             corrupt = np.random.random(len(all_detected_bboxes)) > 0.7
             all_detected_bboxes[corrupt] = rand_box[corrupt]
@@ -864,6 +865,7 @@ class Joint3DDataset(Dataset):
         anno = self.annos[index]
         scan = self.scans[anno['scan_id']]
         scan.pc = np.copy(scan.orig_pc)
+        superpoint = self.superpoints[anno['scan_id']]
 
         # step constract anno (used only for [scannet])
         self.random_utt = False
@@ -871,7 +873,7 @@ class Joint3DDataset(Dataset):
             self.random_utt = self.joint_det and np.random.random() > 0.5
             sampled_classes = self._sample_classes(anno['scan_id'])
             utterance = self._create_scannet_utterance(sampled_classes)
-            
+
             if not self.random_utt:  # detection18 phrase
                 anno['target_id'] = np.where(np.array([
                     self.label_map18[
@@ -890,7 +892,7 @@ class Joint3DDataset(Dataset):
                     ]]] in sampled_classes
                     for ind in range(len(scan.three_d_objects))
                 ])[:MAX_NUM_OBJ])[0].tolist()
-            
+
             # Target names
             if not self.random_utt:
                 anno['target'] = [
@@ -898,8 +900,8 @@ class Joint3DDataset(Dataset):
                         scan.get_object_instance_label(ind)
                     ]]]
                     if self.label_map18[
-                        scan.get_object_instance_label(ind)
-                    ] != 39
+                           scan.get_object_instance_label(ind)
+                       ] != 39
                     else 'other furniture'
                     for ind in anno['target_id']
                 ]
@@ -932,16 +934,17 @@ class Joint3DDataset(Dataset):
         ##########################
         if anno['dataset'] == 'scannet':
             tokens_positive, positive_map, modify_positive_map, pron_positive_map, \
-                other_entity_map, auxi_entity_positive_map, rel_positive_map = self._get_token_positive_map(anno)
+            other_entity_map, auxi_entity_positive_map, rel_positive_map = self._get_token_positive_map(anno)
         else:
             # note text parsing
             tokens_positive, positive_map, modify_positive_map, pron_positive_map, \
-                other_entity_map, auxi_entity_positive_map, rel_positive_map = self._get_token_positive_map_by_parse(anno, auxi_box)
+            other_entity_map, auxi_entity_positive_map, rel_positive_map = self._get_token_positive_map_by_parse(anno,
+                                                                                                                 auxi_box)
         if auxi_box is None:
             auxi_box = np.zeros((1, 6))
         else:
             auxi_box = np.expand_dims(auxi_box, axis=0)
-        
+
         # step groupfree Detected boxes
         (
             all_detected_bboxes, all_detected_bbox_label_mask,
@@ -958,13 +961,14 @@ class Joint3DDataset(Dataset):
         if self.butd_cls:
             all_detected_bboxes = all_bboxes
             all_detected_bbox_label_mask = all_bbox_label_mask
-            detected_class_ids = np.zeros((len(all_bboxes,)))
+            detected_class_ids = np.zeros((len(all_bboxes, )))
             classes = np.array(self.cls_results[anno['scan_id']])
             detected_class_ids[all_bbox_label_mask] = classes[classes > -1]
 
         # Visualize for debugging
-        if self.visualize and anno['dataset'].startswith('sr3d'):
-            self._visualize_scene(anno, point_cloud, og_color, all_bboxes)
+        if self.visualize:
+            # self._visualize_scene(anno, point_cloud, og_color, all_bboxes)
+            self._visualize_superpoint(anno, point_cloud, og_color)
 
         # Return
         _labels = np.zeros(MAX_NUM_OBJ)
@@ -986,19 +990,19 @@ class Joint3DDataset(Dataset):
             "point_clouds": point_cloud.astype(np.float32),
             "og_color": og_color.astype(np.float32),
             "utterances": (
-                ' '.join(anno['utterance'].replace(',', ' ,').split())
-                + ' . not mentioned'
+                    ' '.join(anno['utterance'].replace(',', ' ,').split())
+                    + ' . not mentioned'
             ),
             "language_dataset": language_dataset,
             "tokens_positive": tokens_positive.astype(np.int64),
             # NOTE text component position label
-            "positive_map": positive_map.astype(np.float32),                # main object
+            "positive_map": positive_map.astype(np.float32),  # main object
             "modify_positive_map": modify_positive_map.astype(np.float32),  # modift(attribute)
-            "pron_positive_map": pron_positive_map.astype(np.float32),      # pron
-            "other_entity_map": other_entity_map.astype(np.float32),        # other(auxi) object
-            "rel_positive_map": rel_positive_map.astype(np.float32),        # relation
+            "pron_positive_map": pron_positive_map.astype(np.float32),  # pron
+            "other_entity_map": other_entity_map.astype(np.float32),  # other(auxi) object
+            "rel_positive_map": rel_positive_map.astype(np.float32),  # relation
             "auxi_entity_positive_map": auxi_entity_positive_map.astype(np.float32),
-            "auxi_box":auxi_box.astype(np.float32),
+            "auxi_box": auxi_box.astype(np.float32),
             "relation": (
                 self._find_rel(anno['utterance'])
                 if anno['dataset'].startswith('sr3d')
@@ -1035,7 +1039,8 @@ class Joint3DDataset(Dataset):
                 class_ids[anno['target_id']]
                 if isinstance(anno['target_id'], int)
                 else class_ids[anno['target_id'][0]]
-            )
+            ),
+            "superpoint": torch.from_numpy(superpoint)
         })
 
         return ret_dict
@@ -1049,7 +1054,7 @@ class Joint3DDataset(Dataset):
         ]
         words = set(utterance.split())
         return any(rel in words for rel in rels)
-    
+
     @staticmethod
     def _find_rel(utterance):
         utterance = ' ' + utterance.replace(',', ' ,') + ' '
@@ -1060,7 +1065,7 @@ class Joint3DDataset(Dataset):
                 relation = REL_ALIASES[rel]
                 break
         return relation
-    
+
     @staticmethod
     def _augment_nr3d(utterance):
         """Check whether to augment based on nr3d utterance."""
@@ -1132,19 +1137,55 @@ class Joint3DDataset(Dataset):
                         }
                         for i, c in enumerate(all_boxes_points)
                         if i not in (
-                            [target_id]
-                            + anchor_ids.tolist()
-                            + distractor_ids.tolist()
+                                [target_id]
+                                + anchor_ids.tolist()
+                                + distractor_ids.tolist()
                         )
                     ]
                 )
             }),
             "utterance": wandb.Html(anno['utterance']),
         })
-    
+
+
+    def _visualize_superpoint(self, anno, point_cloud, og_color):
+
+        from utils.scatter_util import scatter_mean
+        point_cloud[:, 3:] = (og_color + self.mean_rgb) * 256
+
+        wandb.log({
+            "pointcloud_scene": wandb.Object3D({
+                "type": "lidar/beta",
+                "points": point_cloud,
+            }),
+        })
+
+        superpoint = torch.from_numpy(self.superpoints[anno['scan_id']])
+        point_cloud = torch.from_numpy(point_cloud)
+        white = torch.tensor([255.0, 255.0, 255.0])
+        super_cloud = scatter_mean(point_cloud, superpoint, dim=0)
+        super_cloud[:, 3:] = white
+
+        area_set = set(superpoint.tolist())
+        for area in area_set:
+            idx = superpoint == area
+            random_color = (torch.rand(3) * 256.0).double()
+            point_cloud[idx, 3:] = random_color
+
+        total_cloud = torch.cat([super_cloud, point_cloud], dim=0)
+
+        wandb.log({
+            "superpoint_scene": wandb.Object3D({
+                "type": "lidar/beta",
+                "points": total_cloud.numpy(),
+            }),
+        })
+
+
     def __len__(self):
         """Return number of utterances."""
         return len(self.annos)
+
 
 # BRIEF Construct position label(map)
 def get_positive_map(tokenized, tokens_positive):
@@ -1215,6 +1256,7 @@ def rot_z(pc, theta):
         pc.T
     ).T
 
+
 def box2points(box):
     """Convert box center/hwd coordinates to vertices (8x3)."""
     x_min, y_min, z_min = (box[:, :3] - (box[:, 3:] / 2)).transpose(1, 0)
@@ -1238,12 +1280,14 @@ def points2box(box):
         box.max(1) - box.min(1)
     ), axis=1)
 
+
 # BRIEF load scannet
 def scannet_loader(iter_obj):
     """Load the scans in memory, helper function."""
     scan_id, scan_path = iter_obj
     print(scan_id)
     return Scan(scan_id, scan_path, True)
+
 
 # BRIEF Save all scans to pickle.
 def save_data(filename, split, data_path):
@@ -1253,7 +1297,7 @@ def save_data(filename, split, data_path):
     # Read all scan files
     scan_path = data_path + 'scans/'
     with open('data/meta_data/scannetv2_%s.txt' % split) as f:
-        scan_ids = [line.rstrip() for line in f]    # train/val scene id list.
+        scan_ids = [line.rstrip() for line in f]  # train/val scene id list.
     print('{} scans found.'.format(len(scan_ids)))
 
     # Load data
@@ -1268,7 +1312,7 @@ def save_data(filename, split, data_path):
     ]
 
     for i, data in enumerate(
-        pool.imap(scannet_loader, iter_obj, chunksize=chunks)
+            pool.imap(scannet_loader, iter_obj, chunksize=chunks)
     ):
         all_scans[scan_ids[i]] = data
     pool.close()
@@ -1286,6 +1330,7 @@ def pickle_data(file_name, *args):
     for item in args:
         cPickle.dump(item, out_file, protocol=2)
     out_file.close()
+
 
 # BRIEF read from pkl
 def unpickle_data(file_name, python2_to_3=False):
@@ -1327,7 +1372,7 @@ def Scene_graph_parse(annos):
         caption = ' '.join(caption.replace("3-seater", "3 - seater").split())
         caption = ' '.join(caption.replace("4-seat", "4 - seat").split())
         caption = ' '.join(caption.replace("theses", "these").split())
-        
+
         # some error or typo in NR3D.
         if anno['dataset'] == 'nr3d':
             caption = ' '.join(caption.replace('.', ' .').split())
@@ -1371,7 +1416,7 @@ def Scene_graph_parse(annos):
                 caption = caption[1:]
             if caption[-1] == "'":
                 caption = caption[:-1]
-        
+
         anno['utterance'] = caption
 
         # text parsing
@@ -1379,7 +1424,7 @@ def Scene_graph_parse(annos):
 
         # NOTE If no node is parsed, add "this is an object ." at the beginning of the sentence
         if (len(graph_node) < 1) or \
-            (len(graph_node) > 0 and graph_node[0]["node_id"] != 0):
+                (len(graph_node) > 0 and graph_node[0]["node_id"] != 0):
             caption = "This is an object . " + caption
             anno['utterance'] = caption
 
@@ -1397,5 +1442,5 @@ def Scene_graph_parse(annos):
                 auxi_entity = node
                 break
         anno["auxi_entity"] = auxi_entity
-    
+
     print('End text decoupling!')
