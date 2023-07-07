@@ -68,7 +68,7 @@ class Joint3DDataset(Dataset):
         # self.augment = False
         self.use_multiview = use_multiview
         self.data_path = data_path
-        self.visualize = True  # manually set this to True to debug
+        self.visualize = False  # manually set this to True to debug
         self.butd = butd
         self.butd_gt = butd_gt
         self.butd_cls = butd_cls

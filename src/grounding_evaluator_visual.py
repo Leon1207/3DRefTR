@@ -337,13 +337,17 @@ class GroundingEvaluator:
                 og_color = end_points['og_color'][bid]
                 point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
                 target_name = end_points['target_name'][bid]
+                utterances = end_points['utterances'][bid]
 
                 # Get all boxes and predicted boxes
+                topk_boxes = 0
                 all_bboxes = end_points['all_bboxes'][bid].cpu()
-                pbox_bad_cases = pbox[bad_cases[0]].cpu()[0].unsqueeze(0)  # top 1
+                pbox_bad_cases = pbox[bad_cases[0]].cpu()[topk_boxes].unsqueeze(0)  # top 1
+                gt_box = gt_bboxes[bid].cpu()
 
                 # Convert boxes to points for visualization
-                all_boxes_points = box2points(all_bboxes[..., :6])
+                all_boxes_points = box2points(all_bboxes[..., :6])  # all boxes
+                gt_box = box2points(gt_box[..., :6])  # gt boxes
                 pbox_bad_cases_points = box2points(pbox_bad_cases[..., :6])
 
                 # Log bad case visualization to wandb
@@ -358,7 +362,7 @@ class GroundingEvaluator:
                                     "label": "actual",
                                     "color": [0, 255, 0]
                                 }
-                                for c in all_boxes_points
+                                for c in gt_box
                             ]
                             + [  # predicted boxes
                                 {
@@ -371,6 +375,7 @@ class GroundingEvaluator:
                         )
                     }),
                     "target_name": wandb.Html(target_name),
+                    "utterance": wandb.Html(utterances),
                 })
 
             # step Measure IoU>threshold, ious are (obj, 10)
