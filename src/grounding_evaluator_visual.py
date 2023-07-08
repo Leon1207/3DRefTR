@@ -49,6 +49,8 @@ class GroundingEvaluator:
         self.reset()
         self.logger = logger
         self.bad_case_threshold = 0.15
+        self.bad_case_visualization = False
+        self.kps_points_visualization = True
 
     def reset(self):
         """Reset accumulators to empty."""
@@ -329,54 +331,74 @@ class GroundingEvaluator:
             ious = ious[torch.arange(len(ious)), torch.arange(len(ious))]
 
             # Check for bad cases
-            wandb.init(project="vis", name="badcase")
-            bad_cases = ious < self.bad_case_threshold  # Here you set your bad_case_threshold
-            if bad_cases.any():
-                # Get point cloud and original color
+            if self.bad_case_visualization:
+                wandb.init(project="vis", name="badcase")
+                bad_cases = ious < self.bad_case_threshold  # Here you set your bad_case_threshold
+                if bad_cases.any():
+                    # Get point cloud and original color
+                    point_cloud = end_points['point_clouds'][bid]
+                    og_color = end_points['og_color'][bid]
+                    point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
+                    target_name = end_points['target_name'][bid]
+                    utterances = end_points['utterances'][bid]
+
+                    # Get all boxes and predicted boxes
+                    topk_boxes = 0
+                    all_bboxes = end_points['all_bboxes'][bid].cpu()
+                    pbox_bad_cases = pbox[bad_cases[0]].cpu()[topk_boxes].unsqueeze(0)  # top 1
+                    gt_box = gt_bboxes[bid].cpu()
+
+                    # Convert boxes to points for visualization
+                    all_boxes_points = box2points(all_bboxes[..., :6])  # all boxes
+                    gt_box = box2points(gt_box[..., :6])  # gt boxes
+                    pbox_bad_cases_points = box2points(pbox_bad_cases[..., :6])
+
+                    # Log bad case visualization to wandb
+                    wandb.log({
+                        "bad_case_point_scene": wandb.Object3D({
+                            "type": "lidar/beta",
+                            "points": point_cloud,
+                            "boxes": np.array(
+                                [  # actual boxes
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "actual",
+                                        "color": [0, 255, 0]
+                                    }
+                                    for c in gt_box
+                                ]
+                                + [  # predicted boxes
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "predicted",
+                                        "color": [255, 0, 0]
+                                    }
+                                    for c in pbox_bad_cases_points
+                                ]
+                            )
+                        }),
+                        "target_name": wandb.Html(target_name),
+                        "utterance": wandb.Html(utterances),
+                    })
+
+            # Check for kps points
+            if self.kps_points_visualization:
+                wandb.init(project="vis", name="kps_points")
                 point_cloud = end_points['point_clouds'][bid]
                 og_color = end_points['og_color'][bid]
                 point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
-                target_name = end_points['target_name'][bid]
-                utterances = end_points['utterances'][bid]
+                kps_points = end_points['query_points_xyz'][bid]
+                red = torch.zeros((256, 3)).cuda()
+                red[:, 0] = 255.0
+                kps_points = torch.cat([kps_points, red], dim=1)
+                total_point = torch.cat([point_cloud, kps_points], dim=0)
 
-                # Get all boxes and predicted boxes
-                topk_boxes = 0
-                all_bboxes = end_points['all_bboxes'][bid].cpu()
-                pbox_bad_cases = pbox[bad_cases[0]].cpu()[topk_boxes].unsqueeze(0)  # top 1
-                gt_box = gt_bboxes[bid].cpu()
-
-                # Convert boxes to points for visualization
-                all_boxes_points = box2points(all_bboxes[..., :6])  # all boxes
-                gt_box = box2points(gt_box[..., :6])  # gt boxes
-                pbox_bad_cases_points = box2points(pbox_bad_cases[..., :6])
-
-                # Log bad case visualization to wandb
                 wandb.log({
-                    "bad_case_point_scene": wandb.Object3D({
-                        "type": "lidar/beta",
-                        "points": point_cloud,
-                        "boxes": np.array(
-                            [  # actual boxes
-                                {
-                                    "corners": c.tolist(),
-                                    "label": "actual",
-                                    "color": [0, 255, 0]
-                                }
-                                for c in gt_box
-                            ]
-                            + [  # predicted boxes
-                                {
-                                    "corners": c.tolist(),
-                                    "label": "predicted",
-                                    "color": [255, 0, 0]
-                                }
-                                for c in pbox_bad_cases_points
-                            ]
-                        )
-                    }),
-                    "target_name": wandb.Html(target_name),
-                    "utterance": wandb.Html(utterances),
-                })
+                        "kps_point_scene": wandb.Object3D({
+                            "type": "lidar/beta",
+                            "points": total_point,
+                        }),
+                    })
 
             # step Measure IoU>threshold, ious are (obj, 10)
             for t in self.thresholds:
