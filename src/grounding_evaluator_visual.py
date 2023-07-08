@@ -392,12 +392,26 @@ class GroundingEvaluator:
                 red[:, 0] = 255.0
                 kps_points = torch.cat([kps_points, red], dim=1)
                 total_point = torch.cat([point_cloud, kps_points], dim=0)
+                utterances = end_points['utterances'][bid]
+                gt_box = gt_bboxes[bid].cpu()
+                gt_box = box2points(gt_box[..., :6])
 
                 wandb.log({
                         "kps_point_scene": wandb.Object3D({
                             "type": "lidar/beta",
                             "points": total_point,
+                            "boxes": np.array(
+                                [
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "target",
+                                        "color": [0, 255, 0]
+                                    }
+                                    for c in gt_box
+                                ]
+                            )
                         }),
+                        "utterance": wandb.Html(utterances),
                     })
 
             # step Measure IoU>threshold, ious are (obj, 10)
