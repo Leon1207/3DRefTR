@@ -22,7 +22,7 @@ from data.model_util_scannet import ScannetDatasetConfig
 from src.joint_det_dataset_superpoint import Joint3DDataset
 # from src.grounding_evaluator import GroundingEvaluator
 from src.grounding_evaluator_visual import GroundingEvaluator
-from models import BeaUTyDETR, BeaUTyDETR_spunet
+from models import BeaUTyDETR, BeaUTyDETR_spunet, BeaUTyDETR_dks
 from models import APCalculator, parse_predictions, parse_groundtruths
 
 from tqdm import tqdm
