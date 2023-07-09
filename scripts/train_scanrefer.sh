@@ -14,5 +14,5 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distri
     --pp_checkpoint /userhome/backup_lhj/zyx/dataset/pointcloud/data_for_eda/scannet_others_processed/gf_detector_l6o256.pth \
     --butd --self_attend --augment_det \
     --max_epoch 80 \
-    --model BeaUTyDETR_spunet \
+    --model BeaUTyDETR_dks \
     --exp EDA_spunet \

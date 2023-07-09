@@ -202,7 +202,7 @@ class BeaUTyDETR_dks(nn.Module):
         )
 
         text_feats = end_points['text_memory']  # text features after cross-attention, [B, N, 288]
-        text_feats = self.text_projection(text_feats.max(1)[0])  # [B, N]
+        text_feats = self.text_projection(text_feats.max(1)[0])  # [B, C]
         ref_scores = self.match_module(features, text_feats)
         ref_scores = torch.sigmoid(ref_scores).squeeze(1)   # [B, N]
         sample_inds = torch.topk(ref_scores, self.num_queries)[1].int()
