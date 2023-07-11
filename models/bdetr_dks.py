@@ -111,15 +111,7 @@ class BeaUTyDETR_dks(nn.Module):
         self.gsample_module = GeneralSamplingModule()
         self.decoder_query_proj = nn.Conv1d(d_model, d_model, kernel_size=1)
         self.text_projection = nn.Linear(d_model, d_model)
-        self.match = nn.Sequential(
-                nn.Conv1d(d_model * 2, d_model, 1),
-                nn.ReLU(),
-                nn.BatchNorm1d(d_model),
-                nn.Conv1d(d_model, d_model, 1),
-                nn.ReLU(),
-                nn.BatchNorm1d(d_model),
-                nn.Conv1d(d_model, 1, 1),
-            )
+        self.match_module = MatchModule(object_dim=d_model, lang_dim=d_model, fusion_dim=d_model)
 
         # Proposal (layer for size and center)
         self.proposal_head = ClsAgnosticPredictHead(
@@ -202,25 +194,19 @@ class BeaUTyDETR_dks(nn.Module):
         # top-k
         sample_inds = torch.topk(   
             torch.sigmoid(points_obj_cls_logits).squeeze(1),
-            self.num_queries * 2
+            self.num_queries
         )[1].int()
 
         xyz, features, sample_inds = self.gsample_module(   
             xyz, features, sample_inds
         )
-        end_points['query_points_sample_inds_stage1'] = sample_inds
 
+        end_points['query_points_sample_inds_stage1'] = sample_inds
         text_feats = end_points['text_memory']  # text features after cross-attention, [B, N, 288]
         text_feats = self.text_projection(text_feats.max(1)[0])  # [B, C]
-        # fuse
-        num_proposal = features.shape[-1]
-        text_feats = text_feats.unsqueeze(-1).repeat(1, 1, num_proposal)   # [B, C, N]
-        features = torch.cat([features, text_feats], dim=1) # [B, C, N]
-        # match
-        ref_scores = self.match(features)          # [B, 1, N]
-        end_points['kps_ref_score'] = ref_scores
+        ref_scores = self.match_module(features, text_feats, end_points)
         ref_scores = torch.sigmoid(ref_scores).squeeze(1)   # [B, N]
-        sample_inds = torch.topk(ref_scores, self.num_queries)[1].int()
+        sample_inds = torch.topk(ref_scores, 256)[1].int()
         xyz, features, sample_inds = self.gsample_module(xyz, features, sample_inds)
 
         end_points['query_points_xyz'] = xyz  # (B, V, 3)
@@ -367,3 +353,38 @@ class BeaUTyDETR_dks(nn.Module):
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
                 m.momentum = 0.1
+
+
+class MatchModule(nn.Module):
+    def __init__(self, object_dim, lang_dim, fusion_dim):
+        super().__init__()
+
+        self.match = nn.Sequential(
+            nn.Conv1d(object_dim + lang_dim, fusion_dim, 1),
+            nn.ReLU(),
+            nn.BatchNorm1d(fusion_dim),
+            nn.Conv1d(fusion_dim, fusion_dim, 1),
+            nn.ReLU(),
+            nn.BatchNorm1d(fusion_dim),
+            nn.Conv1d(fusion_dim, 1, 1),
+        )
+
+    def forward(self, object_feat, lang_feat, end_points):
+        """
+        Args:
+            object_feat: (B,C,num_proposal)
+            lang_feat: (B,C)
+        Returns:
+            scores: (B,1,num_proposal)
+        """
+        # fuse
+        num_proposal = object_feat.shape[-1]
+        lang_feat = lang_feat.unsqueeze(-1).repeat(1, 1, num_proposal)   # [B, C, N]
+        features = torch.cat([object_feat, lang_feat], dim=1) # [B, C, N]
+
+        # match
+        confidences = self.match(features)          # [B, 1, N]
+        
+        end_points['kps_ref_score'] = confidences
+
+        return confidences

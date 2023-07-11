@@ -225,6 +225,17 @@ def compute_points_obj_cls_loss_hard_topk(end_points, topk):
     )
     objectness_loss = cls_loss_src.sum() / B
 
+    if 'kps_ref_score' in end_points.keys():
+        kps_ref_score = end_points['kps_ref_score']
+        inds = end_points['query_points_sample_inds_stage1'][0].long()
+        objectness_label = objectness_label[:, inds]
+        cls_weights = (objectness_label >= 0).float()
+        cls_normalizer = cls_weights.sum(dim=1, keepdim=True).float()
+        cls_weights /= torch.clamp(cls_normalizer, min=1.0)
+        kps_ref_loss = criterion(kps_ref_score.view(kps_ref_score.shape[0], kps_ref_score.shape[2], 1),
+                                    objectness_label.unsqueeze(-1), weights=cls_weights)
+        objectness_loss += kps_ref_loss.sum() / B
+
     return objectness_loss
 
 
