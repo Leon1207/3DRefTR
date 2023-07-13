@@ -25,7 +25,7 @@ from .encoder_decoder_layers import (
 )
 
 
-class BeaUTyDETR(nn.Module):
+class BeaUTyDETR_spseg(nn.Module):
     """
     3D language grounder.
 
@@ -105,6 +105,13 @@ class BeaUTyDETR(nn.Module):
             use_butd_enc_attn=butd
         )
         self.cross_encoder = BiEncoder(bi_layer, 3)
+
+        # Mask Feats Generation layer
+        self.x_mask = nn.Sequential(
+            nn.Conv1d(d_model, d_model, 1), 
+            nn.ReLU(), 
+            nn.Conv1d(d_model, d_model, 1)
+            )
 
         # Query initialization
         self.points_obj_cls = PointsObjClsModule(d_model)
@@ -204,6 +211,14 @@ class BeaUTyDETR(nn.Module):
         end_points['query_points_sample_inds'] = sample_inds  # (B, V)
         return end_points
     
+    # segmentation prediction
+    def _seg_seeds_prediction(self, query, mask_feats, end_points, prefix=''):
+        ## generate seed points masks
+        pred_mask_seeds = torch.einsum('bnd,bdm->bnm', query, mask_feats)
+        ## mapping seed points masks to superpoints masks
+        end_points[f'{prefix}pred_mask_seeds'] = pred_mask_seeds
+        return pred_mask_seeds
+
     # BRIEF forward.
     def forward(self, inputs):
         """
@@ -268,6 +283,9 @@ class BeaUTyDETR(nn.Module):
                 self.contrastive_align_projection_text(text_feats), p=2, dim=-1
             )
             end_points['proj_tokens'] = proj_tokens     # ([B, L, 64])
+
+        # STEP 4.1 Mask Feats Generation
+        mask_feats = self.x_mask(points_features)
 
         # STEP 5. Query Points Generation
         end_points = self._generate_queries(
@@ -335,6 +353,14 @@ class BeaUTyDETR(nn.Module):
             )
             base_xyz = base_xyz.detach().clone()
             base_size = base_size.detach().clone()
+
+            # step Seg Prediction head
+            pred_masks = self._seg_seeds_prediction(
+                query,                                  # ([B, F=256, V=288])
+                mask_feats,                             # ([B, F=288, V=1024])
+                end_points=end_points,  # 
+                prefix=prefix
+            )
 
         return end_points
 
