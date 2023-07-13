@@ -7,7 +7,7 @@
 # Parts adapted from Group-Free
 # Copyright (c) 2021 Ze Liu. All Rights Reserved.
 # Licensed under the MIT License.
-# ------------------------------------------------------------------------
+# ---------------------------------------------------------------BeaUTyDETR_dks---------
 """Main script for language modulation."""
 
 import os
@@ -18,8 +18,8 @@ import torch.distributed as dist
 
 from main_utils import parse_option, BaseTrainTester
 from data.model_util_scannet import ScannetDatasetConfig
-# from src.joint_det_dataset import Joint3DDataset
-from src.joint_det_dataset_superpoint import Joint3DDataset
+from src.joint_det_dataset import Joint3DDataset
+# from src.joint_det_dataset_superpoint import Joint3DDataset
 # from src.grounding_evaluator import GroundingEvaluator
 from src.grounding_evaluator_visual import GroundingEvaluator
 from models import BeaUTyDETR, BeaUTyDETR_spunet, BeaUTyDETR_dks
