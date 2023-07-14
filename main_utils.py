@@ -94,6 +94,7 @@ def parse_option():
     parser.add_argument('--syncbn', action='store_true')
     parser.add_argument('--warmup-epoch', type=int, default=-1)
     parser.add_argument('--warmup-multiplier', type=int, default=100)
+    parser.add_argument('--mask_loss', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -273,7 +274,11 @@ class BaseTrainTester:
             matcher=matcher,
             losses=losses, eos_coef=0.1, temperature=0.07
         )
-        criterion = compute_hungarian_loss
+        if args.mask_loss:
+            losses.append('masks')
+            criterion = compute_hungarian_loss_maskloss
+        else:
+            criterion = compute_hungarian_loss
 
         return criterion, set_criterion
 
