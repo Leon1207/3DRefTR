@@ -356,9 +356,9 @@ class BeaUTyDETR_reftr(nn.Module):
         bbox_mask = self.bbox_attention(decoder_hs, memory_visual)  # [B, 256, head=8, 1024]
         point_src = self.src_project(end_points['fp2_features'].transpose(1, 2)).transpose(1, 2)  # [B, 288, 1024]
         point_src = torch.cat([point_src, memory_visual], dim=1)  # [B, 576, 1024]
-        seg_masks, res_feat = self.mask_head(point_src, bbox_mask, end_points)
-        end_points['seg_masks'] = seg_masks  # [B * 256, 1, 50000]
-        end_points['res_feat'] = res_feat  # [B * 256, 36, 50000]
+        seg_masks = self.mask_head(point_src, bbox_mask, end_points)
+        end_points['pred_masks'] = seg_masks  # [B * 256, 1, 50000]
+        # end_points['res_feat'] = res_feat  # [B * 256, 36, 50000]
 
         return end_points
 
@@ -447,4 +447,4 @@ class MaskHeadSmallConv(nn.Module):
         x = self.fp2(sa0_xyz, sa1_xyz, sa0_features, x)  # [B * 256, 36, 50000]
         out = self.out_lay(x.transpose(1, 2)).transpose(1, 2)  # [B * 256, 1, 50000]
        
-        return out, x
+        return out#, x

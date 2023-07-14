@@ -25,6 +25,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
 from models import HungarianMatcher, SetCriterion, compute_hungarian_loss
+from models import HungarianMatcher_mask, SetCriterion_mask, compute_hungarian_loss_mask
 from utils import get_scheduler, setup_logger
 
 from utils import record_tensorboard
@@ -270,14 +271,17 @@ class BaseTrainTester:
         losses = ['boxes', 'labels']
         if args.use_contrastive_align:
             losses.append('contrastive_align')
-        set_criterion = SetCriterion(
-            matcher=matcher,
-            losses=losses, eos_coef=0.1, temperature=0.07
-        )
         if args.mask_loss:
-            losses.append('masks')
-            criterion = compute_hungarian_loss_maskloss
+            set_criterion = SetCriterion_mask(
+                matcher=matcher,
+                losses=losses, eos_coef=0.1, temperature=0.07
+            )
+            criterion = compute_hungarian_loss_mask
         else:
+            set_criterion = SetCriterion(
+                matcher=matcher,
+                losses=losses, eos_coef=0.1, temperature=0.07
+            )
             criterion = compute_hungarian_loss
 
         return criterion, set_criterion

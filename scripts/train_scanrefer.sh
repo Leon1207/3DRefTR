@@ -16,5 +16,5 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distri
     --max_epoch 80 \
     --model BeaUTyDETR_reftr \
     --mask_loss \
-    --num_target 512 \
+    --num_target 256 \
     --exp EDA_reftr \

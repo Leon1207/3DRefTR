@@ -11,3 +11,4 @@ from .bdetr_reftr import BeaUTyDETR_reftr
 
 from .ap_helper import APCalculator, parse_predictions, parse_groundtruths
 from .losses import HungarianMatcher, SetCriterion, compute_hungarian_loss
+from .losses_mask import HungarianMatcher_mask, SetCriterion_mask, compute_hungarian_loss_mask
