@@ -85,7 +85,9 @@ class TensorBoard():
                 "loss_ce": [],
                 "loss_sem_align": [],
                 "loss_giou": [],
-                "query_points_generation_loss": []
+                "query_points_generation_loss": [],
+                "loss_mask": [],
+                "loss_dice": []
             },
 
             "val_score":{
@@ -101,6 +103,8 @@ class TensorBoard():
                 "loss_ce": [],
                 "loss_sem_align": [],
                 "loss_giou": [],
-                "query_points_generation_loss": []
+                "query_points_generation_loss": [],
+                "loss_mask": [],
+                "loss_dice": []
             }
         }
