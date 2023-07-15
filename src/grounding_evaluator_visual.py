@@ -50,7 +50,7 @@ class GroundingEvaluator:
         self.logger = logger
         self.bad_case_threshold = 0.15
         self.bad_case_visualization = False
-        self.kps_points_visualization = True
+        self.kps_points_visualization = False
 
     def reset(self):
         """Reset accumulators to empty."""

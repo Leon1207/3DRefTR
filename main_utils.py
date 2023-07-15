@@ -137,9 +137,9 @@ def load_checkpoint(args, model, optimizer, scheduler):
         args.start_epoch = int(checkpoint['epoch']) + 1
     except Exception:
         args.start_epoch = 0
-    model.load_state_dict(checkpoint['model'], strict=True)
-    if not args.eval and not args.reduce_lr:
-        optimizer.load_state_dict(checkpoint['optimizer'])
+    model.load_state_dict(checkpoint['model'], strict=False)
+    # if not args.eval and not args.reduce_lr:
+        # optimizer.load_state_dict(checkpoint['optimizer'])
         # scheduler.load_state_dict(checkpoint['scheduler'])
 
     print("=> loaded successfully '{}' (epoch {})".format(
