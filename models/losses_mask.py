@@ -762,7 +762,7 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
         for b in range(gt_labels.shape[0])
     ]
 
-    loss_ce, loss_bbox, loss_giou, loss_sem_align, loss_masks = 0, 0, 0, 0, 0
+    loss_ce, loss_bbox, loss_giou, loss_sem_align, loss_mask, loss_dice = 0, 0, 0, 0, 0, 0
     losses_keys = set_criterion.losses
     for prefix in prefixes:
         output = {}
@@ -793,7 +793,8 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
         if 'proj_tokens' in end_points:
             loss_sem_align += losses['loss_sem_align']
         if prefix == 'last_':
-            loss_masks += (losses.get('loss_mask') + losses.get('loss_dice'))
+            loss_mask += losses.get('loss_mask')
+            loss_dice += losses.get('loss_dice')
 
     if 'seeds_obj_cls_logits' in end_points.keys():
         query_points_generation_loss = compute_points_obj_cls_loss_hard_topk(
@@ -813,7 +814,7 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
             + 5 * loss_bbox
             + loss_giou
             + weight * loss_sem_align
-        ) + loss_masks
+        ) + loss_mask + loss_dice
     )
     end_points['loss_ce'] = loss_ce
     end_points['loss_bbox'] = loss_bbox
@@ -821,5 +822,6 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
     end_points['query_points_generation_loss'] = query_points_generation_loss
     end_points['loss_sem_align'] = loss_sem_align
     end_points['loss'] = loss
-    end_points['loss_masks'] = loss_masks
+    end_points['loss_mask'] = loss_mask
+    end_points['loss_dice'] = loss_dice
     return loss, end_points
