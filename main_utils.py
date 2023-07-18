@@ -25,6 +25,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
 from models import HungarianMatcher, SetCriterion, compute_hungarian_loss
+from models import HungarianMatcher_mask, SetCriterion_mask, compute_hungarian_loss_mask
 from utils import get_scheduler, setup_logger
 
 from utils import record_tensorboard
@@ -94,6 +95,7 @@ def parse_option():
     parser.add_argument('--syncbn', action='store_true')
     parser.add_argument('--warmup-epoch', type=int, default=-1)
     parser.add_argument('--warmup-multiplier', type=int, default=100)
+    parser.add_argument('--mask_loss', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -135,9 +137,9 @@ def load_checkpoint(args, model, optimizer, scheduler):
         args.start_epoch = int(checkpoint['epoch']) + 1
     except Exception:
         args.start_epoch = 0
-    model.load_state_dict(checkpoint['model'], strict=True)
-    if not args.eval and not args.reduce_lr:
-        optimizer.load_state_dict(checkpoint['optimizer'])
+    model.load_state_dict(checkpoint['model'], strict=False)
+    # if not args.eval and not args.reduce_lr:
+        # optimizer.load_state_dict(checkpoint['optimizer'])
         # scheduler.load_state_dict(checkpoint['scheduler'])
 
     print("=> loaded successfully '{}' (epoch {})".format(
@@ -269,11 +271,18 @@ class BaseTrainTester:
         losses = ['boxes', 'labels']
         if args.use_contrastive_align:
             losses.append('contrastive_align')
-        set_criterion = SetCriterion(
-            matcher=matcher,
-            losses=losses, eos_coef=0.1, temperature=0.07
-        )
-        criterion = compute_hungarian_loss
+        if args.mask_loss:
+            set_criterion = SetCriterion_mask(
+                matcher=matcher,
+                losses=losses, eos_coef=0.1, temperature=0.07
+            )
+            criterion = compute_hungarian_loss_mask
+        else:
+            set_criterion = SetCriterion(
+                matcher=matcher,
+                losses=losses, eos_coef=0.1, temperature=0.07
+            )
+            criterion = compute_hungarian_loss
 
         return criterion, set_criterion
 

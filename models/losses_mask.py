@@ -239,7 +239,7 @@ def compute_points_obj_cls_loss_hard_topk(end_points, topk):
     return objectness_loss
 
 
-class HungarianMatcher(nn.Module):
+class HungarianMatcher_mask(nn.Module):
     """
     Assign targets to predictions.
 
@@ -346,8 +346,53 @@ class HungarianMatcher(nn.Module):
             for i, j in indices
         ]
 
+def dice_loss(inputs, targets, num_boxes):
+    """
+    Compute the DICE loss, similar to generalized IOU for masks
+    Args:
+        inputs: A float tensor of arbitrary shape.
+                The predictions for each example.
+        targets: A float tensor with the same shape as inputs. Stores the binary
+                 classification label for each element in inputs
+                (0 for the negative class and 1 for the positive class).
+    """
+    inputs = inputs.sigmoid()
+    inputs = inputs.flatten(1)
+    numerator = 2 * (inputs * targets).sum(1)
+    denominator = inputs.sum(-1) + targets.sum(-1)
+    loss = 1 - (numerator + 1) / (denominator + 1)
+    return loss.sum() / num_boxes
+
+
+def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2):
+    """
+    Loss used in RetinaNet for dense detection: https://arxiv.org/abs/1708.02002.
+    Args:
+        inputs: A float tensor of arbitrary shape.
+                The predictions for each example.
+        targets: A float tensor with the same shape as inputs. Stores the binary
+                 classification label for each element in inputs
+                (0 for the negative class and 1 for the positive class).
+        alpha: (optional) Weighting factor in range (0,1) to balance
+                positive vs negative examples. Default = -1 (no weighting).
+        gamma: Exponent of the modulating factor (1 - p_t) to
+               balance easy vs hard examples.
+    Returns:
+        Loss tensor
+    """
+    prob = inputs.sigmoid()
+    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    p_t = prob * targets + (1 - prob) * (1 - targets)
+    loss = ce_loss * ((1 - p_t) ** gamma)
+
+    if alpha >= 0:
+        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+        loss = alpha_t * loss
+
+    return loss.mean(1).sum() / num_boxes
+
 # BRIEF Compute loss
-class SetCriterion(nn.Module):
+class SetCriterion_mask(nn.Module):
     def __init__(self, matcher, losses={}, eos_coef=0.1, temperature=0.07):
         """
         Parameters:
@@ -452,6 +497,26 @@ class SetCriterion(nn.Module):
 
         losses['loss_bbox'] = loss_bbox.sum() / num_boxes
         losses['loss_giou'] = loss_giou.sum() / num_boxes
+        return losses
+
+    # BRIEF object detection loss.
+    def loss_masks(self, outputs, targets, indices, num_boxes, auxi_indices):
+        """Compute mask losses."""
+        losses = {}
+
+        # only last layer using for loss computed
+        if 'pred_masks' in outputs:
+            idx = self._get_src_permutation_idx(indices)
+            src_masks = outputs['pred_masks'][idx]
+            target_masks = torch.cat([
+                t['masks'][i].float() for t, (_, i) in zip(targets, indices)
+            ], dim=0)
+            
+            losses = {
+                "loss_mask": sigmoid_focal_loss(src_masks, target_masks, num_boxes),
+                "loss_dice": dice_loss(src_masks, target_masks, num_boxes),
+            }
+
         return losses
 
     ############################
@@ -612,6 +677,7 @@ class SetCriterion(nn.Module):
     def get_loss(self, loss, outputs, targets, indices, num_boxes, auxi_indices, **kwargs):
         loss_map = {
             'boxes': self.loss_boxes,      # box loss
+            'masks': self.loss_masks,      # mask loss
             'labels': self.loss_pos_align, # position alignment
             'contrastive_align': self.loss_sem_align   # semantic alignment
         }
@@ -658,7 +724,7 @@ class SetCriterion(nn.Module):
         return losses, indices
 
 # BRIEF loss
-def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
+def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
                            query_points_obj_topk=5):
     """Compute Hungarian matching loss containing CE, bbox and giou."""
     prefixes = ['last_'] + [f'{i}head_' for i in range(num_decoder_layers - 1)]
@@ -669,6 +735,7 @@ def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
     gt_size = end_points['size_gts']
     gt_labels = end_points['sem_cls_label']
     gt_bbox = torch.cat([gt_center, gt_size], dim=-1)
+    gt_masks = end_points['gt_masks']
     # text
     positive_map = end_points['positive_map']               # main obj.
     modify_positive_map = end_points['modify_positive_map'] # attribute(modify)
@@ -683,6 +750,7 @@ def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
         {
             "labels": gt_labels[b, box_label_mask[b].bool()],
             "boxes": gt_bbox[b, box_label_mask[b].bool()],
+            "masks": gt_masks[b, box_label_mask[b].bool()],
             "positive_map": positive_map[b, box_label_mask[b].bool()],
             "modify_positive_map": modify_positive_map[b, box_label_mask[b].bool()],
             "pron_positive_map": pron_positive_map[b, box_label_mask[b].bool()],
@@ -694,7 +762,8 @@ def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
         for b in range(gt_labels.shape[0])
     ]
 
-    loss_ce, loss_bbox, loss_giou, loss_sem_align = 0, 0, 0, 0
+    loss_ce, loss_bbox, loss_giou, loss_sem_align, loss_mask, loss_dice = 0, 0, 0, 0, 0, 0
+    losses_keys = set_criterion.losses
     for prefix in prefixes:
         output = {}
         if 'proj_tokens' in end_points:
@@ -710,6 +779,9 @@ def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
         output['pred_logits'] = pred_logits
         output["pred_boxes"] = pred_bbox
         output["language_dataset"] = end_points["language_dataset"] # dataset
+        if prefix == 'last_':
+            output["pred_masks"] = end_points["pred_masks"]
+            set_criterion.losses = losses_keys + ["masks"]
 
         # NOTE Compute all the requested losses, forward
         losses, _ = set_criterion(output, target)
@@ -720,6 +792,9 @@ def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
         loss_giou += losses.get('loss_giou', 0)
         if 'proj_tokens' in end_points:
             loss_sem_align += losses['loss_sem_align']
+        if prefix == 'last_':
+            loss_mask += losses.get('loss_mask')
+            loss_dice += losses.get('loss_dice')
 
     if 'seeds_obj_cls_logits' in end_points.keys():
         query_points_generation_loss = compute_points_obj_cls_loss_hard_topk(
@@ -739,7 +814,7 @@ def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
             + 5 * loss_bbox
             + loss_giou
             + weight * loss_sem_align
-        )
+        ) + loss_mask + loss_dice
     )
     end_points['loss_ce'] = loss_ce
     end_points['loss_bbox'] = loss_bbox
@@ -747,4 +822,6 @@ def compute_hungarian_loss(end_points, num_decoder_layers, set_criterion,
     end_points['query_points_generation_loss'] = query_points_generation_loss
     end_points['loss_sem_align'] = loss_sem_align
     end_points['loss'] = loss
+    end_points['loss_mask'] = loss_mask
+    end_points['loss_dice'] = loss_dice
     return loss, end_points
