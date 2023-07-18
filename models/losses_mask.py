@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
+from utils.scatter_util import scatter_mean
 
 
 def is_dist_avail_and_initialized():
@@ -511,8 +512,7 @@ class SetCriterion_mask(nn.Module):
             target_masks = torch.cat([
                 t['masks'][i].float() for t, (_, i) in zip(targets, indices)
             ], dim=0)
-
-            from utils.scatter_util import scatter_mean
+            
             superpoint = outputs['superpoints']
             target_masks = scatter_mean(target_masks.float(), superpoint, dim=-1)
             target_masks = (target_masks > 0.5).float()
