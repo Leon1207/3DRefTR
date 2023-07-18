@@ -290,6 +290,7 @@ class BeaUTyDETR_spseg(nn.Module):
         # STEP 4.1 Mask Feats Generation
         mask_feats = self.x_mask(points_features)  # [B, 288, 1024]
         superpoint = inputs['superpoint']  # [B, 50000]
+        end_points['superpoints'] = superpoint
         source_xzy = inputs['point_clouds'][..., 0:3].contiguous()  # [B, 50000, 3]
         super_xyz = scatter_mean(source_xzy, superpoint, dim=1)  # [B, super_num, 3]
         grouped_features = self.super_grouper(points_xyz, super_xyz, mask_feats)  # [B, 288, super_num, nsample]

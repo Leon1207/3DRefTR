@@ -511,7 +511,12 @@ class SetCriterion_mask(nn.Module):
             target_masks = torch.cat([
                 t['masks'][i].float() for t, (_, i) in zip(targets, indices)
             ], dim=0)
-            
+
+            from utils.scatter_util import scatter_mean
+            superpoint = outputs['superpoints']
+            target_masks = scatter_mean(target_masks.float(), superpoint, dim=-1)
+            target_masks = (target_masks > 0.5).float()
+
             losses = {
                 "loss_mask": sigmoid_focal_loss(src_masks, target_masks, num_boxes),
                 "loss_dice": dice_loss(src_masks, target_masks, num_boxes),
@@ -778,6 +783,7 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
         pred_logits = end_points[f'{prefix}sem_cls_scores']     # (B, Q, n_class)
         output['pred_logits'] = pred_logits
         output["pred_boxes"] = pred_bbox
+        output["superpoints"] = end_points["superpoints"]
         output["language_dataset"] = end_points["language_dataset"] # dataset
         if prefix == 'last_':
             output["pred_masks"] = end_points["pred_masks"]
