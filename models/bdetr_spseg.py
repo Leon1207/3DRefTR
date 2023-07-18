@@ -23,6 +23,8 @@ from .modules import (
 from .encoder_decoder_layers import (
     BiEncoder, BiEncoderLayer, BiDecoderLayer
 )
+from utils.scatter_util import scatter_mean
+import pointnet2_utils
 
 
 class BeaUTyDETR_spseg(nn.Module):
@@ -112,6 +114,7 @@ class BeaUTyDETR_spseg(nn.Module):
             nn.ReLU(), 
             nn.Conv1d(d_model, d_model, 1)
             )
+        self.super_grouper = pointnet2_utils.QueryAndGroup(radius=0.8, nsample=12, use_xyz=False, normalize_xyz=True)
 
         # Query initialization
         self.points_obj_cls = PointsObjClsModule(d_model)
@@ -285,7 +288,12 @@ class BeaUTyDETR_spseg(nn.Module):
             end_points['proj_tokens'] = proj_tokens     # ([B, L, 64])
 
         # STEP 4.1 Mask Feats Generation
-        mask_feats = self.x_mask(points_features)
+        mask_feats = self.x_mask(points_features)  # [B, 288, 1024]
+        superpoint = inputs['superpoint']  # [B, 50000]
+        source_xzy = inputs['point_clouds'][..., 0:3].contiguous()  # [B, 50000, 3]
+        super_xyz = scatter_mean(source_xzy, superpoint, dim=1)  # [B, super_num, 3]
+        grouped_features = self.super_grouper(points_xyz, super_xyz, mask_feats)  # [B, 288, super_num, nsample]
+        super_features = F.max_pool2d(grouped_features, kernel_size=[1, grouped_features.size(3)]).squeeze(-1)  # [B, 288, super_num]
 
         # STEP 5. Query Points Generation
         end_points = self._generate_queries(
@@ -357,10 +365,11 @@ class BeaUTyDETR_spseg(nn.Module):
             # step Seg Prediction head
             pred_masks = self._seg_seeds_prediction(
                 query,                                  # ([B, F=256, V=288])
-                mask_feats,                             # ([B, F=288, V=1024])
+                super_features,                             # ([B, F=288, V=super_num])
                 end_points=end_points,  # 
                 prefix=prefix
-            )
+            )  
+            end_points['pred_masks'] = pred_masks  # [B, 256, super_num]
 
         return end_points
 

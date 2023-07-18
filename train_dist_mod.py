@@ -21,7 +21,7 @@ from data.model_util_scannet import ScannetDatasetConfig
 # from src.joint_det_dataset import Joint3DDataset
 from src.joint_det_dataset_superpoint import Joint3DDataset
 from src.grounding_evaluator import GroundingEvaluator
-from models import BeaUTyDETR, BeaUTyDETR_spunet
+from models import BeaUTyDETR, BeaUTyDETR_spunet, BeaUTyDETR_spseg
 from models import APCalculator, parse_predictions, parse_groundtruths
 
 from tqdm import tqdm
@@ -123,7 +123,8 @@ class TrainTester(BaseTrainTester):
             'text': batch_data['utterances'],                   # list[B]  text
             "det_boxes": batch_data['all_detected_boxes'],      # ([B, 132, 6]) groupfree detection boxes
             "det_bbox_label_mask": batch_data['all_detected_bbox_label_mask'],  # ([B, 132]) mask
-            "det_class_ids": batch_data['all_detected_class_ids']   # ([B, 132])  box id
+            "det_class_ids": batch_data['all_detected_class_ids'],   # ([B, 132])  box id
+            "superpoint": batch_data['superpoint']  # ([B, 50000]) superpoint map
         }
 
 

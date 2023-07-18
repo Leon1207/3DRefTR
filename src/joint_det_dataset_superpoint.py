@@ -272,7 +272,7 @@ class Joint3DDataset(Dataset):
                 'anchor_ids': [],
                 'dataset': 'scanrefer'
             }
-            for anno in reader
+            for anno in reader[:100]
             if anno['scene_id'] in scan_ids
         ]
 
