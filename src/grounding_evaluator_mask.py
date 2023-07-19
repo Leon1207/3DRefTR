@@ -71,6 +71,10 @@ class GroundingEvaluator:
         self.gts.update({'vd50': 1e-14, 'vid50': 1e-14})
         self.gts.update({'hard50': 1e-14, 'easy50': 1e-14})
         self.gts.update({'multi50': 1e-14, 'unique50': 1e-14})
+        self.dets.update({'mask_pos': 0})
+        self.gts.update({'mask_pos': 1e-14})
+        self.dets.update({'mask_sem': 0})
+        self.gts.update({'mask_sem': 1e-14})
 
     def print_stats(self):
         """Print accumulated accuracies."""
@@ -100,6 +104,10 @@ class GroundingEvaluator:
         self.logger.info('iou@0.50')
         for field in ['easy50', 'hard50', 'vd50', 'vid50', 'unique50', 'multi50']:
             self.logger.info(field + ' ' +  str(self.dets[field] / self.gts[field]))
+        self.logger.info('iou@mask-top1')
+        self.logger.info('mask_pos' + ' ' +  str(self.dets['mask_pos'] / self.gts['mask_sem']))
+        self.logger.info('mask_sem' + ' ' +  str(self.dets['mask_sem'] / self.gts['mask_sem']))
+
 
     def synchronize_between_processes(self):
         all_dets = misc.all_gather(self.dets)
@@ -132,6 +140,8 @@ class GroundingEvaluator:
         # NOTE Two Evaluation Ways: position alignment, semantic alignment
         self.evaluate_bbox_by_pos_align(end_points, prefix)
         self.evaluate_bbox_by_sem_align(end_points, prefix)
+        self.evaluate_masks_by_pos_align(end_points, prefix)
+        self.evaluate_masks_by_sem_align(end_points, prefix)
     
     # BRIEF position alignment
     def evaluate_bbox_by_pos_align(self, end_points, prefix):
@@ -395,3 +405,191 @@ class GroundingEvaluator:
         
         return positive_map, modify_positive_map, pron_positive_map, other_entity_map, auxi_entity_positive_map, \
             rel_positive_map, gt_bboxes
+    
+
+    # BRIEF position alignment
+    def evaluate_masks_by_pos_align(self, end_points, prefix):
+        """
+        Evaluate masks IoU by position alignment
+
+        Args:
+            end_points (dict): contains predictions and gt
+            prefix (str): layer name
+        """
+        # step get the position label and GT box 
+        positive_map, modify_positive_map, pron_positive_map, other_entity_map, \
+            auxi_entity_positive_map, rel_positive_map, gt_masks = self._parse_gt_mask(end_points)    
+        
+        # Parse predictions
+        sem_scores = end_points[f'{prefix}sem_cls_scores'].softmax(-1)
+
+        if sem_scores.shape[-1] != positive_map.shape[-1]:
+            sem_scores_ = torch.zeros(
+                sem_scores.shape[0], sem_scores.shape[1],
+                positive_map.shape[-1]).to(sem_scores.device)
+            sem_scores_[:, :, :sem_scores.shape[-1]] = sem_scores
+            sem_scores = sem_scores_
+
+        # Parse predictions
+        pred_masks = end_points['pred_masks'] # ([B, 256, super_num])
+        pred_masks = (pred_masks.sigmoid() > 0.5).int()
+        superpoints = end_points['superpoints']  # (B, 50000)
+        pred_masks = torch.gather(pred_masks, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (B, 256, 50000)
+
+        # Highest scoring box -> iou
+        for bid in range(len(positive_map)):
+            is_correct = None
+            
+            # Keep scores for annotated objects only
+            num_obj = int(end_points['box_label_mask'][bid].sum())
+            pmap = positive_map[bid, :num_obj]
+            scores_main = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap.unsqueeze(1)             
+            ).sum(-1)
+
+            # score
+            pmap_modi = modify_positive_map[bid, :1]
+            pmap_pron = pron_positive_map[bid, :1]
+            pmap_other = other_entity_map[bid, :1]
+            pmap_rel = rel_positive_map[bid, :1]    # num_obj
+            scores_modi = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_modi.unsqueeze(1)             
+            ).sum(-1)
+            scores_pron = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_pron.unsqueeze(1)             
+            ).sum(-1)
+            scores_other = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_other.unsqueeze(1)             
+            ).sum(-1)
+            scores_rel = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_rel.unsqueeze(1)             
+            ).sum(-1)
+
+            scores = scores_main + scores_modi + scores_pron + scores_rel - scores_other
+
+            if is_correct is not None:
+                scores = scores * is_correct[None]
+
+            top = scores.argsort(1, True)[:, :1]  # top-1 mask
+            pmasks = pred_masks[bid, top.reshape(-1)]
+
+            # comupte mask iou
+            iou_score_pos = self.calculate_masks_iou(pmasks, gt_masks[bid])
+            print("{:.14f}".format(iou_score_pos))
+            self.gts['mask_pos'] += 1
+            self.dets['mask_pos'] += iou_score_pos
+
+
+    # BRIEF semantic alignment
+    def evaluate_masks_by_sem_align(self, end_points, prefix):
+        """
+        Evaluate masks IoU by semantic alignment.
+
+        Args:
+            end_points (dict): contains predictions and gt
+            prefix (str): layer name
+        """
+        # step get the position label and GT box 
+        positive_map, modify_positive_map, pron_positive_map, other_entity_map, \
+            auxi_entity_positive_map, rel_positive_map, gt_masks = self._parse_gt_mask(end_points)    
+        
+        # Parse predictions
+        pred_masks = end_points['pred_masks'] # ([B, 256, super_num])
+        pred_masks = (pred_masks.sigmoid() > 0.5).int()
+        superpoints = end_points['superpoints']  # (B, 50000)
+        pred_masks = torch.gather(pred_masks, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (B, 256, 50000)
+        
+        # step compute similarity between vision and text
+        proj_tokens = end_points['proj_tokens']             # text feature   (B, 256, 64)
+        proj_queries = end_points[f'{prefix}proj_queries']  # vision feature (B, 256, 64)
+        sem_scores = torch.matmul(proj_queries, proj_tokens.transpose(-1, -2))  # similarity ([B, 256, L]) 
+        sem_scores_ = (sem_scores / 0.07).softmax(-1)                           # softmax ([B, 256, L])
+        sem_scores = torch.zeros(sem_scores_.size(0), sem_scores_.size(1), 256) # ([B, 256, 256])
+        sem_scores = sem_scores.to(sem_scores_.device)
+        sem_scores[:, :sem_scores_.size(1), :sem_scores_.size(2)] = sem_scores_ # ([B, P=256, L=256])
+
+        # Highest scoring box -> iou
+        for bid in range(len(positive_map)):
+            is_correct = None
+            
+            # Keep scores for annotated objects only
+            num_obj = int(end_points['box_label_mask'][bid].sum())
+            pmap = positive_map[bid, :num_obj]
+            scores_main = (
+                sem_scores[bid].unsqueeze(0)  # (1, Q, 256)
+                * pmap.unsqueeze(1)  # (obj, 1, 256)
+            ).sum(-1)  # (obj, Q)
+            
+            # score
+            pmap_modi = modify_positive_map[bid, :1]
+            pmap_pron = pron_positive_map[bid, :1]
+            pmap_other = other_entity_map[bid, :1]
+            pmap_auxi = auxi_entity_positive_map[bid, :1]
+            pmap_rel = rel_positive_map[bid, :1]
+            scores_modi = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_modi.unsqueeze(1)             
+            ).sum(-1)
+            scores_pron = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_pron.unsqueeze(1)             
+            ).sum(-1)
+            scores_other = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_other.unsqueeze(1)             
+            ).sum(-1)
+            scores_auxi = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_auxi.unsqueeze(1)             
+            ).sum(-1)
+            scores_rel = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_rel.unsqueeze(1)             
+            ).sum(-1)
+
+            # total score
+            scores = scores_main + scores_modi + scores_pron + scores_rel - scores_other
+
+            if is_correct is not None:
+                scores = scores * is_correct[None]
+
+            top = scores.argsort(1, True)[:, :1]  # (obj, 10)
+            pmasks = pred_masks[bid, top.reshape(-1)]
+
+            # compute IoU
+            iou_score_sem = self.calculate_masks_iou(pmasks, gt_masks[bid])
+            print("{:.14f}".format(iou_score_sem))
+            self.gts['mask_sem'] += 1
+            self.dets['mask_sem'] += iou_score_sem
+            
+
+    # BRIEF Get the postion label of the decoupled text component.
+    def _parse_gt_mask(self, end_points):
+        positive_map = torch.clone(end_points['positive_map'])                  # main
+        modify_positive_map = torch.clone(end_points['modify_positive_map'])    # attribute
+        pron_positive_map = torch.clone(end_points['pron_positive_map'])        # pron
+        other_entity_map = torch.clone(end_points['other_entity_map'])          # other(including auxi)
+        auxi_entity_positive_map = torch.clone(end_points['auxi_entity_positive_map'])  # auxi
+        rel_positive_map = torch.clone(end_points['rel_positive_map'])
+
+        positive_map[positive_map > 0] = 1                      
+        gt_masks = end_points['gt_masks']   
+        
+        if self.only_root:
+            positive_map = positive_map[:, :1]  # (B, 1, 256)
+            gt_masks = gt_masks[:, :1]        # (B, 1, 50000)
+        
+        return positive_map, modify_positive_map, pron_positive_map, other_entity_map, auxi_entity_positive_map, \
+            rel_positive_map, gt_masks
+    
+    def calculate_masks_iou(self, mask1, mask2):
+        mask1, mask2 = mask1.cpu().numpy(), mask2.cpu().numpy()
+        intersection = np.logical_and(mask1, mask2)
+        union = np.logical_or(mask1, mask2)
+        iou_score = np.sum(intersection) / np.sum(union)
+        return iou_score
