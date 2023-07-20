@@ -431,10 +431,15 @@ class GroundingEvaluator:
             sem_scores = sem_scores_
 
         # Parse predictions
-        pred_masks = end_points['pred_masks'] # ([B, 256, super_num])
-        pred_masks = (pred_masks.sigmoid() > 0.5).int()
-        superpoints = end_points['superpoints']  # (B, 50000)
-        pred_masks = torch.gather(pred_masks, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (B, 256, 50000)
+        pred_masks = []
+        for bs in range(len(end_points['pred_masks'])):
+            pred_masks_ = end_points['pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
+            pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
+            superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
+            pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
+            pred_masks.append(pred_masks_.squeeze(0))
+
+        pred_masks = torch.stack(pred_masks, dim=0)  # (B, 256, 50000)
 
         # Highest scoring box -> iou
         for bid in range(len(positive_map)):
@@ -499,10 +504,15 @@ class GroundingEvaluator:
             auxi_entity_positive_map, rel_positive_map, gt_masks = self._parse_gt_mask(end_points)    
         
         # Parse predictions
-        pred_masks = end_points['pred_masks'] # ([B, 256, super_num])
-        pred_masks = (pred_masks.sigmoid() > 0.5).int()
-        superpoints = end_points['superpoints']  # (B, 50000)
-        pred_masks = torch.gather(pred_masks, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (B, 256, 50000)
+        pred_masks = []
+        for bs in range(len(end_points['pred_masks'])):
+            pred_masks_ = end_points['pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
+            pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
+            superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
+            pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
+            pred_masks.append(pred_masks_.squeeze(0))
+
+        pred_masks = torch.stack(pred_masks, dim=0)  # (B, 256, 50000)
         
         # step compute similarity between vision and text
         proj_tokens = end_points['proj_tokens']             # text feature   (B, 256, 64)
