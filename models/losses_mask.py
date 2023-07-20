@@ -504,22 +504,27 @@ class SetCriterion_mask(nn.Module):
     def loss_masks(self, outputs, targets, indices, num_boxes, auxi_indices):
         """Compute mask losses."""
         losses = {}
+        focal = 0.0
+        dice = 0.0
 
         # only last layer using for loss computed
         if 'pred_masks' in outputs:
-            idx = self._get_src_permutation_idx(indices)
-            src_masks = outputs['pred_masks'][idx]
-            target_masks = torch.cat([
-                t['masks'][i].float() for t, (_, i) in zip(targets, indices)
-            ], dim=0)
-            
-            superpoint = outputs['superpoints']
-            target_masks = scatter_mean(target_masks.float(), superpoint, dim=-1)
-            target_masks = (target_masks > 0.5).float()
+
+            for bs in range(len(outputs['pred_masks'])):
+                idx0 = indices[bs][0]
+                src_masks = outputs['pred_masks'][bs][idx0]  # [len(indices), super_num]
+                superpoint = outputs['superpoints'][bs]
+                idx1 = indices[bs][1]
+                target = targets[bs]['masks'][idx1].float()  # [len(indices), 50000]
+                target_masks = scatter_mean(target, superpoint, dim=-1)  # [len(indices), super_num]
+                target_masks = (target_masks > 0.5).float()
+
+                focal += sigmoid_focal_loss(src_masks, target_masks, num_boxes)
+                dice += dice_loss(src_masks, target_masks, num_boxes)
 
             losses = {
-                "loss_mask": sigmoid_focal_loss(src_masks, target_masks, num_boxes),
-                "loss_dice": dice_loss(src_masks, target_masks, num_boxes),
+                "loss_mask": focal,
+                "loss_dice": dice,
             }
 
         return losses

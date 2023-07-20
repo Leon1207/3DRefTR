@@ -292,9 +292,12 @@ class BeaUTyDETR_spseg(nn.Module):
         superpoint = inputs['superpoint']  # [B, 50000]
         end_points['superpoints'] = superpoint
         source_xzy = inputs['point_clouds'][..., 0:3].contiguous()  # [B, 50000, 3]
-        super_xyz = scatter_mean(source_xzy, superpoint, dim=1)  # [B, super_num, 3]
-        grouped_features = self.super_grouper(points_xyz, super_xyz, mask_feats)  # [B, 288, super_num, nsample]
-        super_features = F.max_pool2d(grouped_features, kernel_size=[1, grouped_features.size(3)]).squeeze(-1)  # [B, 288, super_num]
+        super_features = []
+        for bs in range(source_xzy.shape[0]):
+            super_xyz = scatter_mean(source_xzy[bs], superpoint[bs], dim=0).unsqueeze(0)  # [1, super_num, 3]
+            grouped_feature = self.super_grouper(points_xyz[bs].unsqueeze(0), super_xyz, mask_feats[bs].unsqueeze(0))  # [1, 288, super_num, nsample]
+            super_feature = F.max_pool2d(grouped_feature, kernel_size=[1, grouped_feature.size(3)]).squeeze(-1).squeeze(0)  # [288, super_num]
+            super_features.append(super_feature)
 
         # STEP 5. Query Points Generation
         end_points = self._generate_queries(
@@ -364,12 +367,16 @@ class BeaUTyDETR_spseg(nn.Module):
             base_size = base_size.detach().clone()
 
             # step Seg Prediction head
-            pred_masks = self._seg_seeds_prediction(
-                query,                                  # ([B, F=256, V=288])
-                super_features,                             # ([B, F=288, V=super_num])
-                end_points=end_points,  # 
-                prefix=prefix
-            )  
+            pred_masks = []
+            for bs in range(query.shape[0]):
+                pred_mask = self._seg_seeds_prediction(
+                    query[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
+                    super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
+                    end_points=end_points,  # 
+                    prefix=prefix
+                ).squeeze(0)  
+                pred_masks.append(pred_mask)
+
             end_points['pred_masks'] = pred_masks  # [B, 256, super_num]
 
         return end_points

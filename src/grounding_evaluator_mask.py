@@ -480,7 +480,7 @@ class GroundingEvaluator:
 
             # comupte mask iou
             iou_score_pos = self.calculate_masks_iou(pmasks, gt_masks[bid])
-            print("{:.14f}".format(iou_score_pos))
+            # print("{:.14f}".format(iou_score_pos))
             self.gts['mask_pos'] += 1
             self.dets['mask_pos'] += iou_score_pos
 
@@ -563,7 +563,7 @@ class GroundingEvaluator:
 
             # compute IoU
             iou_score_sem = self.calculate_masks_iou(pmasks, gt_masks[bid])
-            print("{:.14f}".format(iou_score_sem))
+            # print("{:.14f}".format(iou_score_sem))
             self.gts['mask_sem'] += 1
             self.dets['mask_sem'] += iou_score_sem
             
@@ -578,11 +578,16 @@ class GroundingEvaluator:
         rel_positive_map = torch.clone(end_points['rel_positive_map'])
 
         positive_map[positive_map > 0] = 1                      
-        gt_masks = end_points['gt_masks']   
+        gt_masks_ = end_points['gt_masks']   
+        gt_masks = gt_masks_
         
         if self.only_root:
+            gt_masks = []
             positive_map = positive_map[:, :1]  # (B, 1, 256)
-            gt_masks = gt_masks[:, :1]        # (B, 1, 50000)
+            idx = end_points['target_id']
+            for b in range(idx.shape[0]):
+                gt_masks.append(gt_masks_[b, idx[b]])
+            gt_masks = torch.stack(gt_masks, dim=0).unsqueeze(1)  # (B, 1, 50000)
         
         return positive_map, modify_positive_map, pron_positive_map, other_entity_map, auxi_entity_positive_map, \
             rel_positive_map, gt_masks
