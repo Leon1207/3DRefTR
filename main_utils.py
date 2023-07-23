@@ -96,6 +96,7 @@ def parse_option():
     parser.add_argument('--warmup-epoch', type=int, default=-1)
     parser.add_argument('--warmup-multiplier', type=int, default=100)
     parser.add_argument('--mask_loss', action='store_true')
+    parser.add_argument('--frozen', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -289,29 +290,39 @@ class BaseTrainTester:
     @staticmethod
     def get_optimizer(args, model):
         """Initialize optimizer."""
-        param_dicts = [
-            {
-                "params": [
-                    p for n, p in model.named_parameters()
-                    if "backbone_net" not in n and "text_encoder" not in n
-                    and p.requires_grad
-                ]
-            },
-            {
-                "params": [
-                    p for n, p in model.named_parameters()
-                    if "backbone_net" in n and p.requires_grad
-                ],
-                "lr": args.lr_backbone
-            },
-            {
-                "params": [
-                    p for n, p in model.named_parameters()
-                    if "text_encoder" in n and p.requires_grad
-                ],
-                "lr": args.text_encoder_lr
-            }
-        ]
+        if args.frozen:
+            param_dicts = [
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "x_mask" in n
+                    ]
+                }
+            ]
+        else:
+            param_dicts = [
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "backbone_net" not in n and "text_encoder" not in n
+                        and p.requires_grad
+                    ]
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "backbone_net" in n and p.requires_grad
+                    ],
+                    "lr": args.lr_backbone
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "text_encoder" in n and p.requires_grad
+                    ],
+                    "lr": args.text_encoder_lr
+                }
+            ]
         optimizer = optim.AdamW(param_dicts,
                                 lr=args.lr,
                                 weight_decay=args.weight_decay)
