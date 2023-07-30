@@ -323,6 +323,7 @@ class BeaUTyDETR_spseg(nn.Module):
         base_xyz = proposal_center.detach().clone()
         base_size = proposal_size.detach().clone()
         query_mask = None
+        query_last = None
 
         # STEP 7. Decoder
         for i in range(self.num_decoder_layers):
@@ -366,18 +367,20 @@ class BeaUTyDETR_spseg(nn.Module):
             base_xyz = base_xyz.detach().clone()
             base_size = base_size.detach().clone()
 
-            # step Seg Prediction head
-            pred_masks = []
-            for bs in range(query.shape[0]):
-                pred_mask = self._seg_seeds_prediction(
-                    query[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
-                    super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
-                    end_points=end_points,  # 
-                    prefix=prefix
-                ).squeeze(0)  
-                pred_masks.append(pred_mask)
+            query_last = query
 
-            end_points['pred_masks'] = pred_masks  # [B, 256, super_num]
+        # step Seg Prediction head
+        pred_masks = []
+        for bs in range(query.shape[0]):
+            pred_mask = self._seg_seeds_prediction(
+                query_last[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
+                super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
+                end_points=end_points,  # 
+                prefix=prefix
+            ).squeeze(0)  
+            pred_masks.append(pred_mask)
+
+        end_points['pred_masks'] = pred_masks  # [B, 256, super_num]
 
         return end_points
 

@@ -792,7 +792,9 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
         output["language_dataset"] = end_points["language_dataset"] # dataset
         if prefix == 'last_':
             output["pred_masks"] = end_points["pred_masks"]
-            set_criterion.losses = losses_keys + ["masks"]
+            set_criterion.losses = ['boxes', 'labels', 'contrastive_align', 'masks']
+        else:
+            set_criterion.losses = ['boxes', 'labels', 'contrastive_align']
 
         # NOTE Compute all the requested losses, forward
         losses, _ = set_criterion(output, target)
