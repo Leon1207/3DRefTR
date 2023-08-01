@@ -17,6 +17,22 @@ import torch
 from models.losses import _iou3d_par, box_cxcyczwhd_to_xyzxyz
 import utils.misc as misc
 import numpy as np
+import wandb
+
+def box2points(box):
+    """Convert box center/hwd coordinates to vertices (8x3)."""
+    x_min, y_min, z_min = (box[:, :3] - (box[:, 3:] / 2)).transpose(1, 0)
+    x_max, y_max, z_max = (box[:, :3] + (box[:, 3:] / 2)).transpose(1, 0)
+    return np.stack((
+        np.concatenate((x_min[:, None], y_min[:, None], z_min[:, None]), 1),
+        np.concatenate((x_min[:, None], y_max[:, None], z_min[:, None]), 1),
+        np.concatenate((x_max[:, None], y_min[:, None], z_min[:, None]), 1),
+        np.concatenate((x_max[:, None], y_max[:, None], z_min[:, None]), 1),
+        np.concatenate((x_min[:, None], y_min[:, None], z_max[:, None]), 1),
+        np.concatenate((x_min[:, None], y_max[:, None], z_max[:, None]), 1),
+        np.concatenate((x_max[:, None], y_min[:, None], z_max[:, None]), 1),
+        np.concatenate((x_max[:, None], y_max[:, None], z_max[:, None]), 1)
+    ), axis=1)
 
 def softmax(x):
     """Numpy function for softmax."""
@@ -47,6 +63,7 @@ class GroundingEvaluator:
         self.filter_non_gt_boxes = filter_non_gt_boxes
         self.reset()
         self.logger = logger
+        self.mask_visualization = False
 
     def reset(self):
         """Reset accumulators to empty."""
@@ -576,6 +593,59 @@ class GroundingEvaluator:
             # print("{:.14f}".format(iou_score_sem))
             self.gts['mask_sem'] += 1
             self.dets['mask_sem'] += iou_score_sem
+
+            # visualization for mask
+            if self.mask_visualization:
+                wandb.init(project="vis", name="mask")
+                print("iou: ", iou_score_sem)
+                point_cloud = end_points['point_clouds'][bid]
+                og_color = end_points['og_color'][bid]
+                point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
+                red = torch.tensor([255.0, 0.0, 0.0]).cuda()
+                blue = torch.tensor([0.0, 0.0, 255.0]).cuda()
+
+                gt_center = end_points['center_label'][bid, :, 0:3]       
+                gt_size = end_points['size_gts'][bid]                        
+                gt_box = torch.cat([gt_center, gt_size], dim=-1).cpu()
+
+                pred_center = end_points[f'{prefix}center'][bid]
+                pred_size = end_points[f'{prefix}pred_size'][bid]
+                pred_bbox = torch.cat([pred_center, pred_size], dim=-1).cpu()[top.reshape(-1)]
+
+                utterances = end_points['utterances'][bid]
+                gt_box = box2points(gt_box[..., :6])
+                pred_bbox = box2points(pred_bbox[..., :6])
+
+                mask_idx = pmasks[0] == 1
+                point_cloud[mask_idx, 3:] = red
+                # gt_mask_idx = gt_masks[bid][0] == 1
+                # point_cloud[gt_mask_idx, 3:] = blue
+                print("shape: ", point_cloud[mask_idx].shape[0])
+
+                wandb.log({
+                        "point_scene": wandb.Object3D({
+                            "type": "lidar/beta",
+                            "points": point_cloud,
+                            "boxes": np.array(
+                                [
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "target",
+                                        "color": [0, 255, 0]
+                                    }
+                                    for c in gt_box
+                                ] + [ 
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "predicted",
+                                        "color": [0, 0, 255]
+                                    }
+                                    for c in pred_bbox
+                                ]
+                            )
+                        }),
+                        "utterance": wandb.Html(utterances),
+                    })
             
 
     # BRIEF Get the postion label of the decoupled text component.

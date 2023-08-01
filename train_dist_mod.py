@@ -20,7 +20,7 @@ from main_utils import parse_option, BaseTrainTester
 from data.model_util_scannet import ScannetDatasetConfig
 # from src.joint_det_dataset import Joint3DDataset
 from src.grounding_evaluator_mask import GroundingEvaluator
-from models import BeaUTyDETR, BeaUTyDETR_spunet, BeaUTyDETR_spseg
+from models import BeaUTyDETR, BeaUTyDETR_spunet, BeaUTyDETR_spseg, BeaUTyDETR_spseg_width
 from src.joint_det_dataset_mask import Joint3DDataset
 from models import APCalculator, parse_predictions, parse_groundtruths
 

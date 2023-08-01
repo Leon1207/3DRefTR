@@ -291,12 +291,24 @@ class BaseTrainTester:
     def get_optimizer(args, model):
         """Initialize optimizer."""
         if args.frozen:
+            print("-------------------------------frozen EDA parameters------------------------------------")
+            for n, p in model.named_parameters():
+                if "x_mask" not in n and "x_query" not in n:
+                    p.requires_grad = False
             param_dicts = [
                 {
                     "params": [
                         p for n, p in model.named_parameters()
-                        if "x_mask" in n
+                        if "x_mask" in n or "x_query" in n
                     ]
+                },
+                {
+                    "params": [],
+                    "lr": args.lr_backbone
+                },
+                {
+                    "params": [],
+                    "lr": args.text_encoder_lr
                 }
             ]
         else:
