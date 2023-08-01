@@ -580,27 +580,19 @@ class GroundingEvaluator:
 
     # BRIEF Get the postion label of the decoupled text component.
     def _parse_gt_mask(self, end_points):
-        positive_map_ = torch.clone(end_points['positive_map'])                  # main
+        positive_map = torch.clone(end_points['positive_map'])                  # main
         modify_positive_map = torch.clone(end_points['modify_positive_map'])    # attribute
         pron_positive_map = torch.clone(end_points['pron_positive_map'])        # pron
         other_entity_map = torch.clone(end_points['other_entity_map'])          # other(including auxi)
         auxi_entity_positive_map = torch.clone(end_points['auxi_entity_positive_map'])  # auxi
         rel_positive_map = torch.clone(end_points['rel_positive_map'])
 
-        positive_map_[positive_map_ > 0] = 1                      
-        gt_masks_ = end_points['gt_masks']   
-        gt_masks = gt_masks_
-        positive_map = positive_map_
+        positive_map[positive_map > 0] = 1                      
+        gt_masks = end_points['gt_masks']   
         
         if self.only_root:
-            gt_masks = []
-            positive_map = []
-            idx = end_points['target_id']
-            for b in range(idx.shape[0]):
-                gt_masks.append(gt_masks_[b, idx[b]])
-                positive_map.append(positive_map_[b, idx[b]])
-            gt_masks = torch.stack(gt_masks, dim=0).unsqueeze(1)  # (B, 1, 50000)
-            positive_map = torch.stack(positive_map, dim=0).unsqueeze(1)  # (B, 1, 256)
+            positive_map = positive_map[:, :1]  # (B, 1, 256)
+            gt_masks = gt_masks[:, :1]        # (B, 1, 50000)
         
         return positive_map, modify_positive_map, pron_positive_map, other_entity_map, auxi_entity_positive_map, \
             rel_positive_map, gt_masks

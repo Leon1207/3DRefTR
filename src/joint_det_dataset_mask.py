@@ -704,7 +704,7 @@ class Joint3DDataset(Dataset):
         gt_masks = np.zeros((MAX_NUM_OBJ, len(scan.pc)))
         for t, tid in enumerate(tids):
             point_instance_label[scan.three_d_objects[tid]['points']] = t
-            gt_masks[tid][scan.three_d_objects[tid]['points']] = 1
+            gt_masks[t][scan.three_d_objects[tid]['points']] = 1
         
         bboxes[:len(tids)] = np.stack([
             scan.get_object_bbox(tid).reshape(-1) for tid in tids

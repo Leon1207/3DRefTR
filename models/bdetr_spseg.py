@@ -114,7 +114,7 @@ class BeaUTyDETR_spseg(nn.Module):
             nn.ReLU(), 
             nn.Conv1d(d_model, d_model, 1)
             )
-        self.super_grouper = pointnet2_utils.QueryAndGroup(radius=0.8, nsample=12, use_xyz=False, normalize_xyz=True)
+        self.super_grouper = pointnet2_utils.QueryAndGroup(radius=0.2, nsample=2, use_xyz=False, normalize_xyz=True)
 
         # Query initialization
         self.points_obj_cls = PointsObjClsModule(d_model)

@@ -827,7 +827,7 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
             + 5 * loss_bbox
             + loss_giou
             + weight * loss_sem_align
-        ) + loss_mask + loss_dice
+        ) + 10 * loss_mask + 2 * loss_dice
     )
     end_points['loss_ce'] = loss_ce
     end_points['loss_bbox'] = loss_bbox
