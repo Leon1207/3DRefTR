@@ -97,6 +97,7 @@ def parse_option():
     parser.add_argument('--warmup-multiplier', type=int, default=100)
     parser.add_argument('--mask_loss', action='store_true')
     parser.add_argument('--frozen', action='store_true')
+    parser.add_argument('--small_lr', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -268,17 +269,18 @@ class BaseTrainTester:
     @staticmethod
     def get_criterion(args):
         """Get loss criterion for training."""
-        matcher = HungarianMatcher(1, 0, 2, args.use_soft_token_loss)
         losses = ['boxes', 'labels']
         if args.use_contrastive_align:
             losses.append('contrastive_align')
         if args.mask_loss:
+            matcher = HungarianMatcher_mask(1, 0, 2, args.use_soft_token_loss)
             set_criterion = SetCriterion_mask(
                 matcher=matcher,
                 losses=losses, eos_coef=0.1, temperature=0.07
             )
             criterion = compute_hungarian_loss_mask
         else:
+            matcher = HungarianMatcher(1, 0, 2, args.use_soft_token_loss)
             set_criterion = SetCriterion(
                 matcher=matcher,
                 losses=losses, eos_coef=0.1, temperature=0.07
@@ -309,6 +311,38 @@ class BaseTrainTester:
                 {
                     "params": [],
                     "lr": args.text_encoder_lr
+                }
+            ]
+        elif args.small_lr:
+            param_dicts = [
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "x_mask" in n or "x_query" in n
+                    ],
+                    "lr": args.lr
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "backbone_net" not in n and "text_encoder" not in n and "x_mask" not in n and "x_query" not in n
+                        and p.requires_grad
+                    ],
+                    "lr": args.lr * 0.01
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "backbone_net" in n and p.requires_grad
+                    ],
+                    "lr": args.lr_backbone * 0.01
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "text_encoder" in n and p.requires_grad
+                    ],
+                    "lr": args.text_encoder_lr * 0.01
                 }
             ]
         else:

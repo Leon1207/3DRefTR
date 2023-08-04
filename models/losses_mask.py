@@ -267,6 +267,7 @@ class HungarianMatcher_mask(nn.Module):
         self.cost_class = cost_class
         self.cost_bbox = cost_bbox
         self.cost_giou = cost_giou
+        self.cost_masks = 0.0002
         assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0
         self.soft_token = soft_token
 
@@ -298,6 +299,23 @@ class HungarianMatcher_mask(nn.Module):
         # We flatten to compute the cost matrices in a batch
         out_prob = outputs["pred_logits"].flatten(0, 1).softmax(-1)  # [B*Q, C=256]
         out_bbox = outputs["pred_boxes"].flatten(0, 1)  # [B*Q, 6]
+
+        cost_masks = 0.0
+        if "pred_masks" in outputs:
+            cost_masks = []
+            out_masks =  None
+            tgt_masks = torch.cat([v["masks"] for v in targets]) # (B, 50000)
+            for idx in range(len(outputs["pred_masks"])):
+                out_mask = outputs["pred_masks"][idx]  # [Q, super_num]
+                out_mask = (out_mask > 0).float()  # [Q, super_num]
+                superpoint = outputs["superpoints"][idx].unsqueeze(0).expand(out_mask.shape[0], -1)  # (Q, 50000)
+                out_mask = torch.gather(out_mask, 1, superpoint)  # (Q, 50000)
+                if out_masks == None:
+                    out_masks = out_mask
+                else:
+                    out_masks = torch.cat([out_masks, out_mask], dim=0)  # (B*Q, 50000)
+                
+            cost_masks = torch.cdist(out_masks, tgt_masks.float(), p=1)    # ([B*Q, 2])
 
         # Also concat the target labels and boxes
         positive_map = torch.cat([t["positive_map"] for t in targets])  # (B, 256)
@@ -332,6 +350,7 @@ class HungarianMatcher_mask(nn.Module):
             self.cost_bbox * cost_bbox          # 0 * 
             + self.cost_class * cost_class      # 1 * ([B*Q, 2])
             + self.cost_giou * cost_giou        # 2 * ([B*Q, 2])
+            + self.cost_masks * cost_masks
         ).view(bs, num_queries, -1).cpu()
 
         sizes = [len(v["boxes"]) for v in targets]
@@ -714,7 +733,8 @@ class SetCriterion_mask(nn.Module):
             }
             for b in range(outputs["pred_boxes"].shape[0])
         ]
-        auxi_indices = self.matcher(outputs, auxi_target)
+        # auxi_indices = self.matcher(outputs, auxi_target)
+        auxi_indices = None  # avoid bugs
 
         num_boxes = sum(len(inds[1]) for inds in indices)
         num_boxes = torch.as_tensor(
@@ -773,7 +793,6 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
     ]
 
     loss_ce, loss_bbox, loss_giou, loss_sem_align, loss_mask, loss_dice = 0, 0, 0, 0, 0, 0
-    losses_keys = set_criterion.losses
     for prefix in prefixes:
         output = {}
         if 'proj_tokens' in end_points:
