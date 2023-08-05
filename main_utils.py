@@ -269,7 +269,7 @@ class BaseTrainTester:
     @staticmethod
     def get_criterion(args):
         """Get loss criterion for training."""
-        losses = ['boxes', 'labels']
+        losses = ['boxes', 'labels', 'masks']
         if args.use_contrastive_align:
             losses.append('contrastive_align')
         if args.mask_loss:

@@ -224,11 +224,9 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
         return end_points
     
     # segmentation prediction
-    def _seg_seeds_prediction(self, query, mask_feats, end_points, prefix=''):
+    def _seg_seeds_prediction(self, query, mask_feats):
         ## generate seed points masks
         pred_mask_seeds = torch.einsum('bnd,bdm->bnm', query, mask_feats)
-        ## mapping seed points masks to superpoints masks
-        end_points[f'{prefix}pred_mask_seeds'] = pred_mask_seeds
         return pred_mask_seeds
 
     # BRIEF forward.
@@ -329,10 +327,19 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             end_points=end_points,
             prefix='proposal_'
         )
+        query_proposal = self.x_query(query.transpose(1, 2)).transpose(1, 2)
+        pred_masks = []
+        for bs in range(query.shape[0]):
+            pred_mask = self._seg_seeds_prediction(
+                query_proposal[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
+                super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
+            ).squeeze(0)  
+            pred_masks.append(pred_mask)
+        end_points['proposal_pred_masks'] = pred_masks  # [B, 256, super_num]
+
         base_xyz = proposal_center.detach().clone()
         base_size = proposal_size.detach().clone()
         query_mask = None
-        query_last = None
 
         # STEP 7. Decoder
         for i in range(self.num_decoder_layers):
@@ -376,21 +383,17 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             base_xyz = base_xyz.detach().clone()
             base_size = base_size.detach().clone()
 
-            query_last = query
+            # step Seg Prediction head
+            query = self.x_query(query.transpose(1, 2)).transpose(1, 2)
+            pred_masks = []
+            for bs in range(query.shape[0]):
+                pred_mask = self._seg_seeds_prediction(
+                    query[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
+                    super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
+                ).squeeze(0)  
+                pred_masks.append(pred_mask)
 
-        # step Seg Prediction head
-        query_last = self.x_query(query_last.transpose(1, 2)).transpose(1, 2)
-        pred_masks = []
-        for bs in range(query.shape[0]):
-            pred_mask = self._seg_seeds_prediction(
-                query_last[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
-                super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
-                end_points=end_points,  # 
-                prefix=prefix
-            ).squeeze(0)  
-            pred_masks.append(pred_mask)
-
-        end_points['pred_masks'] = pred_masks  # [B, 256, super_num]
+            end_points[f'{prefix}pred_masks'] = pred_masks  # [B, 256, super_num]
 
         return end_points
 

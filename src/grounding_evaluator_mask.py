@@ -449,8 +449,8 @@ class GroundingEvaluator:
 
         # Parse predictions
         pred_masks = []
-        for bs in range(len(end_points['pred_masks'])):
-            pred_masks_ = end_points['pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
+        for bs in range(len(end_points['last_pred_masks'])):
+            pred_masks_ = end_points['last_pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
             pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
             superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
             pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
@@ -522,8 +522,8 @@ class GroundingEvaluator:
         
         # Parse predictions
         pred_masks = []
-        for bs in range(len(end_points['pred_masks'])):
-            pred_masks_ = end_points['pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
+        for bs in range(len(end_points['last_pred_masks'])):
+            pred_masks_ = end_points['last_pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
             pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
             superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
             pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
