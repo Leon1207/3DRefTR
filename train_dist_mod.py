@@ -20,7 +20,7 @@ from main_utils import parse_option, BaseTrainTester
 from data.model_util_scannet import ScannetDatasetConfig
 # from src.joint_det_dataset import Joint3DDataset
 from src.grounding_evaluator_mask import GroundingEvaluator
-from models import BeaUTyDETR, BeaUTyDETR_spunet, BeaUTyDETR_spseg, BeaUTyDETR_spseg_width, BeaUTyDETR_spseg_width_multistage
+from models import BeaUTyDETR, BeaUTyDETR_spunet, BeaUTyDETR_spseg, BeaUTyDETR_spseg_width, BeaUTyDETR_spseg_width_multistage, BeaUTyDETR_spseg_width_align
 from src.joint_det_dataset_mask import Joint3DDataset
 from models import APCalculator, parse_predictions, parse_groundtruths
 
@@ -124,7 +124,13 @@ class TrainTester(BaseTrainTester):
             "det_boxes": batch_data['all_detected_boxes'],      # ([B, 132, 6]) groupfree detection boxes
             "det_bbox_label_mask": batch_data['all_detected_bbox_label_mask'],  # ([B, 132]) mask
             "det_class_ids": batch_data['all_detected_class_ids'],   # ([B, 132])  box id
-            "superpoint": batch_data['superpoint']  # ([B, 50000]) superpoint map
+            "superpoint": batch_data['superpoint'],  # ([B, 50000]) superpoint map
+            "positive_map": batch_data['positive_map'],
+            "modify_positive_map": batch_data['modify_positive_map'],
+            "pron_positive_map": batch_data['pron_positive_map'],
+            "other_entity_map": batch_data['other_entity_map'],
+            "rel_positive_map": batch_data['rel_positive_map'],
+            "box_label_mask": batch_data['box_label_mask']
         }
 
 

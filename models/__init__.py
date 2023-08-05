@@ -9,6 +9,7 @@ from .bdetr_spunet import BeaUTyDETR_spunet
 from .bdetr_spseg import BeaUTyDETR_spseg
 from .bdetr_spseg_width import BeaUTyDETR_spseg_width
 from .bdetr_spseg_width_multistage import BeaUTyDETR_spseg_width_multistage
+from .bdetr_spseg_width_align import BeaUTyDETR_spseg_width_align
 
 from .ap_helper import APCalculator, parse_predictions, parse_groundtruths
 from .losses import HungarianMatcher, SetCriterion, compute_hungarian_loss

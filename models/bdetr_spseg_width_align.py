@@ -27,7 +27,7 @@ from utils.scatter_util import scatter_mean
 import pointnet2_utils
 
 
-class BeaUTyDETR_spseg_width(nn.Module):
+class BeaUTyDETR_spseg_width_align(nn.Module):
     """
     3D language grounder.
 
@@ -205,12 +205,13 @@ class BeaUTyDETR_spseg_width(nn.Module):
     # BRIEF generate query.
     def _generate_queries(self, xyz, features, end_points):
         # kps sampling
-        points_obj_cls_logits = self.points_obj_cls(features)  # [B, 1, K=1024]
-        end_points['seeds_obj_cls_logits'] = points_obj_cls_logits
+        # points_obj_cls_logits = self.points_obj_cls(features)  # [B, 1, K=1024]
+        # end_points['seeds_obj_cls_logits'] = points_obj_cls_logits
+        points_sem_align_score = end_points["align_scores"]  # [B, 1, K=1024]
         
         # top-k
         sample_inds = torch.topk(   
-            torch.sigmoid(points_obj_cls_logits).squeeze(1),
+            torch.sigmoid(points_sem_align_score).squeeze(1),
             self.num_queries
         )[1].int()
 
@@ -307,6 +308,63 @@ class BeaUTyDETR_spseg_width(nn.Module):
             grouped_feature = self.super_grouper(points_xyz[bs].unsqueeze(0), super_xyz, mask_feats[bs].unsqueeze(0))  # [1, 288, super_num, nsample]
             super_feature = F.max_pool2d(grouped_feature, kernel_size=[1, grouped_feature.size(3)]).squeeze(-1).squeeze(0)  # [288, super_num]
             super_features.append(super_feature)
+
+        # STEP 4.2. get select score by using sem align
+        proj_tokens = end_points['proj_tokens']             # text feature   (B, 256, 64)
+        proj_queries = F.normalize(
+                self.contrastive_align_projection_image(points_features.transpose(-1, -2)), p=2, dim=-1
+            )  # seed vision feature (B, 1024, 64)
+        sem_scores = torch.matmul(proj_queries, proj_tokens.transpose(-1, -2))  # similarity ([B, 1024, L]) 
+        sem_scores_ = (sem_scores / 0.07).softmax(-1)                           # softmax ([B, 1024, L])
+        sem_scores = torch.zeros(sem_scores_.size(0), sem_scores_.size(1), 256) # ([B, 1024, 256])
+        sem_scores = sem_scores.to(sem_scores_.device)
+        sem_scores[:, :sem_scores_.size(1), :sem_scores_.size(2)] = sem_scores_ # ([B, P=1024, L=256])
+
+        positive_map = torch.clone(inputs['positive_map'])                  # main
+        modify_positive_map = torch.clone(inputs['modify_positive_map'])    # attribute
+        pron_positive_map = torch.clone(inputs['pron_positive_map'])        # pron
+        other_entity_map = torch.clone(inputs['other_entity_map'])          # other(including auxi)
+        rel_positive_map = torch.clone(inputs['rel_positive_map'])
+
+        positive_map[positive_map > 0] = 1                      
+        positive_map = positive_map[:, :1]  # (B, 1, 256)
+
+        align_scores = []
+        for bid in range(sem_scores.shape[0]):
+            num_obj = int(inputs['box_label_mask'][bid].sum())
+            pmap = positive_map[bid, :num_obj]
+            scores_main = (
+                sem_scores[bid].unsqueeze(0)  # (1, Q, 256)
+                * pmap.unsqueeze(1)  # (obj, 1, 256)
+            ).sum(-1)  # (obj, Q)
+            
+            # score
+            pmap_modi = modify_positive_map[bid, :1]
+            pmap_pron = pron_positive_map[bid, :1]
+            pmap_other = other_entity_map[bid, :1]
+            pmap_rel = rel_positive_map[bid, :1]
+            scores_modi = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_modi.unsqueeze(1)             
+            ).sum(-1)
+            scores_pron = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_pron.unsqueeze(1)             
+            ).sum(-1)
+            scores_other = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_other.unsqueeze(1)             
+            ).sum(-1)
+            scores_rel = (
+                sem_scores[bid].unsqueeze(0)    
+                * pmap_rel.unsqueeze(1)             
+            ).sum(-1)
+
+            # total score
+            align_scores.append(scores_main + scores_modi + scores_pron + scores_rel - scores_other)
+    
+        align_scores = torch.stack(align_scores, dim=0)  # [B, 1, 1024]
+        end_points["align_scores"] = align_scores
 
         # STEP 5. Query Points Generation
         end_points = self._generate_queries(
