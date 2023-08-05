@@ -226,17 +226,6 @@ def compute_points_obj_cls_loss_hard_topk(end_points, topk):
     )
     objectness_loss = cls_loss_src.sum() / B
 
-    if 'kps_ref_score' in end_points.keys():
-        kps_ref_score = end_points['kps_ref_score']
-        inds = end_points['query_points_sample_inds_stage1'][0].long()
-        objectness_label = objectness_label[:, inds]
-        cls_weights = (objectness_label >= 0).float()
-        cls_normalizer = cls_weights.sum(dim=1, keepdim=True).float()
-        cls_weights /= torch.clamp(cls_normalizer, min=1.0)
-        kps_ref_loss = criterion(kps_ref_score.view(kps_ref_score.shape[0], kps_ref_score.shape[2], 1),
-                                    objectness_label.unsqueeze(-1), weights=cls_weights)
-        objectness_loss += kps_ref_loss.sum() / B
-
     return objectness_loss
 
 
@@ -300,20 +289,22 @@ class HungarianMatcher_mask(nn.Module):
         out_prob = outputs["pred_logits"].flatten(0, 1).softmax(-1)  # [B*Q, C=256]
         out_bbox = outputs["pred_boxes"].flatten(0, 1)  # [B*Q, 6]
 
-        cost_masks = []
-        out_masks =  None
-        tgt_masks = torch.cat([v["masks"] for v in targets]) # (B, 50000)
-        for idx in range(len(outputs["pred_masks"])):
-            out_mask = outputs["pred_masks"][idx]  # [Q, super_num]
-            out_mask = (out_mask > 0).float()  # [Q, super_num]
-            superpoint = outputs["superpoints"][idx].unsqueeze(0).expand(out_mask.shape[0], -1)  # (Q, 50000)
-            out_mask = torch.gather(out_mask, 1, superpoint)  # (Q, 50000)
-            if out_masks == None:
-                out_masks = out_mask
-            else:
-                out_masks = torch.cat([out_masks, out_mask], dim=0)  # (B*Q, 50000)
-            
-        cost_masks = torch.cdist(out_masks, tgt_masks.float(), p=1)    # ([B*Q, 2])
+        cost_masks = 0.0
+        if "pred_masks" in outputs:
+            cost_masks = []
+            out_masks =  None
+            tgt_masks = torch.cat([v["masks"] for v in targets]) # (B, 50000)
+            for idx in range(len(outputs["pred_masks"])):
+                out_mask = outputs["pred_masks"][idx]  # [Q, super_num]
+                out_mask = (out_mask > 0).float()  # [Q, super_num]
+                superpoint = outputs["superpoints"][idx].unsqueeze(0).expand(out_mask.shape[0], -1)  # (Q, 50000)
+                out_mask = torch.gather(out_mask, 1, superpoint)  # (Q, 50000)
+                if out_masks == None:
+                    out_masks = out_mask
+                else:
+                    out_masks = torch.cat([out_masks, out_mask], dim=0)  # (B*Q, 50000)
+                
+            cost_masks = torch.cdist(out_masks, tgt_masks.float(), p=1)    # ([B*Q, 2])
 
         # Also concat the target labels and boxes
         positive_map = torch.cat([t["positive_map"] for t in targets])  # (B, 256)
@@ -520,22 +511,22 @@ class SetCriterion_mask(nn.Module):
     # BRIEF object detection loss.
     def loss_masks(self, outputs, targets, indices, num_boxes, auxi_indices):
         """Compute mask losses."""
-        assert 'pred_masks' in outputs
         losses = {}
         focal = 0.0
         dice = 0.0
 
-        for bs in range(len(outputs['pred_masks'])):
-            idx0 = indices[bs][0]
-            src_masks = outputs['pred_masks'][bs][idx0]  # [len(indices), super_num]
-            superpoint = outputs['superpoints'][bs]
-            idx1 = indices[bs][1]
-            target = targets[bs]['masks'][idx1].float()  # [len(indices), 50000]
-            target_masks = scatter_mean(target, superpoint, dim=-1)  # [len(indices), super_num]
-            target_masks = (target_masks > 0.5).float()
+        if 'pred_masks' in outputs:
+            for bs in range(len(outputs['pred_masks'])):
+                idx0 = indices[bs][0]
+                src_masks = outputs['pred_masks'][bs][idx0]  # [len(indices), super_num]
+                superpoint = outputs['superpoints'][bs]
+                idx1 = indices[bs][1]
+                target = targets[bs]['masks'][idx1].float()  # [len(indices), 50000]
+                target_masks = scatter_mean(target, superpoint, dim=-1)  # [len(indices), super_num]
+                target_masks = (target_masks > 0.5).float()
 
-            focal += sigmoid_focal_loss(src_masks, target_masks, num_boxes)
-            dice += dice_loss(src_masks, target_masks, num_boxes)
+                focal += sigmoid_focal_loss(src_masks, target_masks, num_boxes)
+                dice += dice_loss(src_masks, target_masks, num_boxes)
 
         losses = {
             "loss_mask": focal,
@@ -755,6 +746,7 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
     """Compute Hungarian matching loss containing CE, bbox and giou."""
     prefixes = ['last_'] + [f'{i}head_' for i in range(num_decoder_layers - 1)]
     prefixes = ['proposal_'] + prefixes     # 6+1: 'proposal_'  'last_' '0head_'  '1head_'  '2head_'  '3head_'  '4head_'
+    is_multi_mask = "proposal_pred_masks" in end_points
 
     # STEP target GT box
     gt_center = end_points['center_label'][:, :, 0:3]
@@ -805,7 +797,11 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
         output["pred_boxes"] = pred_bbox
         output["superpoints"] = end_points["superpoints"]
         output["language_dataset"] = end_points["language_dataset"] # dataset
-        output["pred_masks"] = end_points[f"{prefix}pred_masks"]
+        if is_multi_mask:
+            output["pred_masks"] = end_points[f"{prefix}pred_masks"]
+        else:
+            if prefix == 'last_':
+                output["pred_masks"] = end_points["last_pred_masks"]
 
         # NOTE Compute all the requested losses, forward
         losses, _ = set_criterion(output, target)

@@ -116,13 +116,15 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             nn.ReLU(), 
             nn.Conv1d(d_model * 2, d_model, 1)
             )
-        self.x_query = nn.Sequential(
-            nn.Conv1d(d_model, d_model * 2, 1), 
-            nn.ReLU(), 
-            nn.Conv1d(d_model * 2, d_model * 2, 1),
-            nn.ReLU(), 
-            nn.Conv1d(d_model * 2, d_model, 1)
-            )
+        self.x_query = nn.ModuleList()
+        for _ in range(self.num_decoder_layers + 1):
+            self.x_query.append(nn.Sequential(
+                nn.Conv1d(d_model, d_model * 2, 1), 
+                nn.ReLU(), 
+                nn.Conv1d(d_model * 2, d_model * 2, 1),
+                nn.ReLU(), 
+                nn.Conv1d(d_model * 2, d_model, 1)
+                ))
         self.super_grouper = pointnet2_utils.QueryAndGroup(radius=0.2, nsample=2, use_xyz=False, normalize_xyz=True)
 
         # Query initialization
@@ -327,7 +329,7 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             end_points=end_points,
             prefix='proposal_'
         )
-        query_proposal = self.x_query(query.transpose(1, 2)).transpose(1, 2)
+        query_proposal = self.x_query[0](query.transpose(1, 2)).transpose(1, 2)
         pred_masks = []
         for bs in range(query.shape[0]):
             pred_mask = self._seg_seeds_prediction(
@@ -384,7 +386,7 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             base_size = base_size.detach().clone()
 
             # step Seg Prediction head
-            query = self.x_query(query.transpose(1, 2)).transpose(1, 2)
+            query = self.x_query[i+1](query.transpose(1, 2)).transpose(1, 2)
             pred_masks = []
             for bs in range(query.shape[0]):
                 pred_mask = self._seg_seeds_prediction(

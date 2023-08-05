@@ -438,7 +438,7 @@ class GroundingEvaluator:
             auxi_entity_positive_map, rel_positive_map, gt_masks = self._parse_gt_mask(end_points)    
         
         # Parse predictions
-        sem_scores = end_points[f'{prefix}sem_cls_scores'].softmax(-1)
+        sem_scores = end_points[f'{prefix}sem_cls_scores'].softmax(-1)  # [B, 256 256]
 
         if sem_scores.shape[-1] != positive_map.shape[-1]:
             sem_scores_ = torch.zeros(
@@ -492,7 +492,7 @@ class GroundingEvaluator:
                 * pmap_rel.unsqueeze(1)             
             ).sum(-1)
 
-            scores = scores_main + scores_modi + scores_pron + scores_rel - scores_other
+            scores = scores_main + scores_modi + scores_pron + scores_rel - scores_other  # [1, 256]
 
             if is_correct is not None:
                 scores = scores * is_correct[None]
