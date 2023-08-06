@@ -328,7 +328,7 @@ class BaseTrainTester:
                         if "backbone_net" not in n and "text_encoder" not in n and "x_mask" not in n and "x_query" not in n
                         and p.requires_grad
                     ],
-                    "lr": args.lr * 0.01
+                    "lr": args.lr * 0.1
                 },
                 {
                     "params": [

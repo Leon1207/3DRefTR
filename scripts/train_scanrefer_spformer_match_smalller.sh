@@ -13,7 +13,7 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distri
     --lr_decay_epochs 50 75 \
     --pp_checkpoint /userhome/backup_lhj/zyx/dataset/pointcloud/data_for_eda/scannet_others_processed/gf_detector_l6o256.pth \
     --butd --self_attend --augment_det \
-    --checkpoint_path /userhome/backup_lhj/lhj/pointcloud/EDA-master/log/scanrefer/scanrefer_2gpu/1681527693/ckpt_epoch_70.pth \
+    --checkpoint_path userhome/backup_lhj/lhj/pointcloud/EDA-master/log/scanrefer/scanrefer_2gpu/1681527693/ckpt_epoch_70.pth \
     --max_epoch 100 \
     --model BeaUTyDETR_spseg_width \
     --mask_loss \

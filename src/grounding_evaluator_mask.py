@@ -585,8 +585,16 @@ class GroundingEvaluator:
             if is_correct is not None:
                 scores = scores * is_correct[None]
 
-            top = scores.argsort(1, True)[:, :1]  # (obj, 10)
+            top = scores.argsort(1, True)[:, :1]
             pmasks = pred_masks[bid, top.reshape(-1)]
+
+            top5 = scores.argsort(1, True)[:, :5]
+            pmasks_top5 = pred_masks[bid, top5.reshape(-1)]
+            confidences = torch.tensor([0.5, 0.2, 0.15, 0.1, 0.05])  # 0.4085030250274417
+            # confidences = torch.tensor([0.5, 0.3, 0.1, 0.05, 0.05])  # 0.4085030250274417
+            # confidences = torch.tensor([0.4, 0.3, 0.15, 0.1, 0.05])  # 0.396977610971728
+            # confidences = torch.tensor([0.6, 0.2, 0.1, 0.05, 0.05])  # 0.40762728470050485
+            pmasks_confidence = self.confidence_weighted_voting(masks=pmasks, confidences=confidences).unsqueeze(0)
 
             # compute IoU
             iou_score_sem = self.calculate_masks_iou(pmasks, gt_masks[bid])
@@ -673,3 +681,20 @@ class GroundingEvaluator:
         union = np.logical_or(mask1, mask2)
         iou_score = np.sum(intersection) / np.sum(union)
         return iou_score
+    
+    def confidence_weighted_voting(self, masks, confidences):
+        # Create an empty mask for the final result
+        final_mask = torch.zeros_like(masks[0]).float()
+        
+        # For each mask and its corresponding confidence
+        for mask, confidence in zip(masks, confidences):
+            # Add the mask weighted by its confidence to the final mask
+            final_mask += mask * confidence
+        
+        # Normalize final mask by the sum of confidences
+        final_mask /= torch.sum(confidences)
+        
+        # Threshold the final mask at 0.5 to get binary values
+        final_mask = torch.where(final_mask >= 0.5, 1, 0)
+        
+        return final_mask
