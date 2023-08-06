@@ -146,6 +146,12 @@ class BeaUTyDETR_spseg_width_decode(nn.Module):
                 self_position_embedding=self_position_embedding, butd=self.butd
             ))
 
+        # Seed decoder layer
+        self.seed_decoder = BiDecoderLayer(
+            d_model, n_heads=8, dim_feedforward=256,
+            dropout=0.1, activation="relu",
+            self_position_embedding='xyz_learned', butd=self.butd
+        )
 
         # Prediction heads
         self.prediction_heads = nn.ModuleList()
@@ -297,18 +303,6 @@ class BeaUTyDETR_spseg_width_decode(nn.Module):
             )
             end_points['proj_tokens'] = proj_tokens     # ([B, L, 64])
 
-        # STEP 4.1 Mask Feats Generation
-        mask_feats = self.x_mask(points_features)  # [B, 288, 1024]
-        superpoint = inputs['superpoint']  # [B, 50000]
-        end_points['superpoints'] = superpoint
-        source_xzy = inputs['point_clouds'][..., 0:3].contiguous()  # [B, 50000, 3]
-        super_features = []
-        for bs in range(source_xzy.shape[0]):
-            super_xyz = scatter_mean(source_xzy[bs], superpoint[bs], dim=0).unsqueeze(0)  # [1, super_num, 3]
-            grouped_feature = self.super_grouper(points_xyz[bs].unsqueeze(0), super_xyz, mask_feats[bs].unsqueeze(0))  # [1, 288, super_num, nsample]
-            super_feature = F.max_pool2d(grouped_feature, kernel_size=[1, grouped_feature.size(3)]).squeeze(-1).squeeze(0)  # [288, super_num]
-            super_features.append(super_feature)
-
         # STEP 5. Query Points Generation
         end_points = self._generate_queries(
             points_xyz, points_features, end_points
@@ -377,7 +371,30 @@ class BeaUTyDETR_spseg_width_decode(nn.Module):
             base_xyz = base_xyz.detach().clone()
             base_size = base_size.detach().clone()
 
-            query_last = query
+            query_last = query  # (B, 256, 288)
+
+        # Mask Feats Generation (B, 1024, 288) * (B, 256, 288)
+        mask_feats = self.seed_decoder(
+            points_features.transpose(1, 2).contiguous(), query_last,
+            text_feats, end_points['fp2_xyz'],
+            query_mask,
+            text_padding_mask,
+            detected_feats=(
+                detected_feats if self.butd
+                else None
+            ),
+            detected_mask=detected_mask if self.butd else None
+        ).transpose(1, 2).contiguous()  # [B, 288, 1024]
+        mask_feats = self.x_mask(mask_feats)  # [B, 288, 1024]
+        superpoint = inputs['superpoint']  # [B, 50000]
+        end_points['superpoints'] = superpoint
+        source_xzy = inputs['point_clouds'][..., 0:3].contiguous()  # [B, 50000, 3]
+        super_features = []
+        for bs in range(source_xzy.shape[0]):
+            super_xyz = scatter_mean(source_xzy[bs], superpoint[bs], dim=0).unsqueeze(0)  # [1, super_num, 3]
+            grouped_feature = self.super_grouper(points_xyz[bs].unsqueeze(0), super_xyz, mask_feats[bs].unsqueeze(0))  # [1, 288, super_num, nsample]
+            super_feature = F.max_pool2d(grouped_feature, kernel_size=[1, grouped_feature.size(3)]).squeeze(-1).squeeze(0)  # [288, super_num]
+            super_features.append(super_feature)
 
         # step Seg Prediction head
         query_last = self.x_query(query_last.transpose(1, 2)).transpose(1, 2)

@@ -11,6 +11,7 @@ from .bdetr_spseg_width import BeaUTyDETR_spseg_width
 from .bdetr_spseg_width_multistage import BeaUTyDETR_spseg_width_multistage
 from .bdetr_spseg_width_align import BeaUTyDETR_spseg_width_align
 from .bdetr_spseg_width_larger import BeaUTyDETR_spseg_width_larger
+from .bdetr_spseg_width_decode import BeaUTyDETR_spseg_width_decode
 
 from .ap_helper import APCalculator, parse_predictions, parse_groundtruths
 from .losses import HungarianMatcher, SetCriterion, compute_hungarian_loss
