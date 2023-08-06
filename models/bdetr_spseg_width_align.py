@@ -311,10 +311,11 @@ class BeaUTyDETR_spseg_width_align(nn.Module):
 
         # STEP 4.2. get select score by using sem align
         proj_tokens = end_points['proj_tokens']             # text feature   (B, 256, 64)
-        proj_queries = F.normalize(
+        proj_seeds = F.normalize(
                 self.contrastive_align_projection_image(points_features.transpose(-1, -2)), p=2, dim=-1
             )  # seed vision feature (B, 1024, 64)
-        sem_scores = torch.matmul(proj_queries, proj_tokens.transpose(-1, -2))  # similarity ([B, 1024, L]) 
+        end_points['proj_seeds'] = proj_seeds
+        sem_scores = torch.matmul(proj_seeds, proj_tokens.transpose(-1, -2))  # similarity ([B, 1024, L]) 
         sem_scores_ = (sem_scores / 0.07).softmax(-1)                           # softmax ([B, 1024, L])
         sem_scores = torch.zeros(sem_scores_.size(0), sem_scores_.size(1), 256) # ([B, 1024, 256])
         sem_scores = sem_scores.to(sem_scores_.device)

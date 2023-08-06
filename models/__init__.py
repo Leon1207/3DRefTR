@@ -14,3 +14,4 @@ from .bdetr_spseg_width_align import BeaUTyDETR_spseg_width_align
 from .ap_helper import APCalculator, parse_predictions, parse_groundtruths
 from .losses import HungarianMatcher, SetCriterion, compute_hungarian_loss
 from .losses_mask import HungarianMatcher_mask, SetCriterion_mask, compute_hungarian_loss_mask
+from .losses_maskalign import HungarianMatcher_maskalign, SetCriterion_maskalign, compute_hungarian_loss_maskalign

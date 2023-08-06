@@ -26,6 +26,7 @@ from torch.nn.parallel import DistributedDataParallel
 
 from models import HungarianMatcher, SetCriterion, compute_hungarian_loss
 from models import HungarianMatcher_mask, SetCriterion_mask, compute_hungarian_loss_mask
+from models import HungarianMatcher_maskalign, SetCriterion_maskalign, compute_hungarian_loss_maskalign
 from utils import get_scheduler, setup_logger
 
 from utils import record_tensorboard
@@ -98,6 +99,7 @@ def parse_option():
     parser.add_argument('--mask_loss', action='store_true')
     parser.add_argument('--frozen', action='store_true')
     parser.add_argument('--small_lr', action='store_true')
+    parser.add_argument('--mask_loss_align', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -269,16 +271,26 @@ class BaseTrainTester:
     @staticmethod
     def get_criterion(args):
         """Get loss criterion for training."""
-        losses = ['boxes', 'labels', 'masks']
+        losses = ['boxes', 'labels']
         if args.use_contrastive_align:
             losses.append('contrastive_align')
         if args.mask_loss:
+            losses.append('masks')
             matcher = HungarianMatcher_mask(1, 0, 2, args.use_soft_token_loss)
             set_criterion = SetCriterion_mask(
                 matcher=matcher,
                 losses=losses, eos_coef=0.1, temperature=0.07
             )
             criterion = compute_hungarian_loss_mask
+        elif args.mask_loss_align:
+            losses.append('masks')
+            losses.append('selection')
+            matcher = HungarianMatcher_maskalign(1, 0, 2, args.use_soft_token_loss)
+            set_criterion = SetCriterion_maskalign(
+                matcher=matcher,
+                losses=losses, eos_coef=0.1, temperature=0.07
+            )
+            criterion = compute_hungarian_loss_maskalign
         else:
             matcher = HungarianMatcher(1, 0, 2, args.use_soft_token_loss)
             set_criterion = SetCriterion(
@@ -328,7 +340,7 @@ class BaseTrainTester:
                         if "backbone_net" not in n and "text_encoder" not in n and "x_mask" not in n and "x_query" not in n
                         and p.requires_grad
                     ],
-                    "lr": args.lr * 0.1
+                    "lr": args.lr * 0.01
                 },
                 {
                     "params": [
