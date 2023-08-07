@@ -308,13 +308,13 @@ class BaseTrainTester:
         if args.frozen:
             print("-------------------------------frozen EDA parameters------------------------------------")
             for n, p in model.named_parameters():
-                if "x_mask" not in n and "x_query" not in n:
+                if "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n:
                     p.requires_grad = False
             param_dicts = [
                 {
                     "params": [
                         p for n, p in model.named_parameters()
-                        if "x_mask" in n or "x_query" in n
+                        if "x_mask" in n or "x_query" in n or "seed_decoder" in n
                     ]
                 },
                 {
@@ -331,14 +331,15 @@ class BaseTrainTester:
                 {
                     "params": [
                         p for n, p in model.named_parameters()
-                        if "x_mask" in n or "x_query" in n
+                        if "x_mask" in n or "x_query" in n or "seed_decoder" in n
                     ],
                     "lr": args.lr
                 },
                 {
                     "params": [
                         p for n, p in model.named_parameters()
-                        if "backbone_net" not in n and "text_encoder" not in n and "x_mask" not in n and "x_query" not in n
+                        if "backbone_net" not in n and "text_encoder" not in n 
+                        and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
                         and p.requires_grad
                     ],
                     "lr": args.lr * 0.01
@@ -363,7 +364,7 @@ class BaseTrainTester:
                 {
                     "params": [
                         p for n, p in model.named_parameters()
-                        if "x_mask" in n or "x_query" in n 
+                        if "x_mask" in n or "x_query" in n or "seed_decoder" in n
                         or "contrastive_align_projection_image_larger" in n 
                         or "contrastive_align_projection_text_larger" in n
                     ],
@@ -373,7 +374,7 @@ class BaseTrainTester:
                     "params": [
                         p for n, p in model.named_parameters()
                         if "backbone_net" not in n and "text_encoder" not in n 
-                        and "x_mask" not in n and "x_query" not in n
+                        and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
                         and "contrastive_align_projection_image_larger" not in n 
                         and "contrastive_align_projection_text_larger" not in n
                         and p.requires_grad
