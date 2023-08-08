@@ -21,6 +21,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 from utils.scatter_util import scatter_mean
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
 
 
 def is_dist_avail_and_initialized():
@@ -229,7 +231,7 @@ def compute_points_obj_cls_loss_hard_topk(end_points, topk):
     return objectness_loss
 
 
-class HungarianMatcher_mask(nn.Module):
+class HungarianMatcher_mask_seedalign(nn.Module):
     """
     Assign targets to predictions.
 
@@ -401,7 +403,7 @@ def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: f
     return loss.mean(1).sum() / num_boxes
 
 # BRIEF Compute loss
-class SetCriterion_mask(nn.Module):
+class SetCriterion_mask_seedalign(nn.Module):
     def __init__(self, matcher, losses={}, eos_coef=0.1, temperature=0.07):
         """
         Parameters:
@@ -671,6 +673,162 @@ class SetCriterion_mask(nn.Module):
         # total loss
         tot_loss = (box_to_token_loss + token_to_box_loss) / 2
         return {"loss_sem_align": tot_loss / num_boxes}
+      
+
+    def loss_sem_align_seed(self, outputs, targets, indices, num_boxes, auxi_indices):
+
+        if "proj_seeds" not in outputs:
+            return {"loss_sem_align_seed": 0.0}
+
+        tokenized = outputs["tokenized"]
+
+        # step 1. Contrastive logits
+        norm_text_emb = outputs["proj_tokens"]  # B, num_tokens=L, dim=64
+        norm_img_emb = outputs["proj_seeds"]  # B, num_seed=1024, dim=64
+        logits = (
+            torch.matmul(norm_img_emb, norm_text_emb.transpose(-1, -2))
+            / self.temperature
+        )  # [[B, num_queries, num_tokens]
+
+        # step 2. positive map
+        # construct a map such that positive_map[k, i, j] = True
+        # if query i is associated to token j in batch item k
+        positive_map = torch.zeros(logits.shape, device=logits.device)  # ([B, 1024, L])
+        # handle 'not mentioned'
+        inds = tokenized['attention_mask'].sum(1) - 1  # attention_mask表示是否填充单词，是为1，否为0
+        positive_map[torch.arange(len(inds)), :, inds] = 0.5  
+        positive_map[torch.arange(len(inds)), :, inds - 1] = 0.5  # 将token seq的最后两个位置设置为半样本，处理“没有提到”的情况
+        # handle true mentions
+        pmap = torch.cat([
+            t['positive_map'][i] for t, (_, i) in zip(targets, indices)
+        ], dim=0)[..., :logits.shape[-1]]
+
+        modi_positive_map = torch.zeros(logits.shape, device=logits.device)
+        pron_positive_map = torch.zeros(logits.shape, device=logits.device)
+        other_positive_map = torch.zeros(logits.shape, device=logits.device)
+        rel_positive_map = torch.zeros(logits.shape, device=logits.device)
+        # [positive, 256] --> [positive, L]
+        pmap_modi = torch.cat([
+            t['modify_positive_map'][i] for t, (_, i) in zip(targets, indices)
+        ], dim=0)[..., :logits.shape[-1]]   
+        pmap_pron = torch.cat([
+            t['pron_positive_map'][i] for t, (_, i) in zip(targets, indices)
+        ], dim=0)[..., :logits.shape[-1]]
+        pmap_other = torch.cat([
+            t['other_entity_map'][i] for t, (_, i) in zip(targets, indices)
+        ], dim=0)[..., :logits.shape[-1]]
+        pmap_rel = torch.cat([
+            t['rel_positive_map'][i] for t, (_, i) in zip(targets, indices)
+        ], dim=0)[..., :logits.shape[-1]]
+
+        # step object mask
+        # Mask for matches <> 'not mentioned'
+        mask = torch.full(
+            logits.shape[:2],
+            self.eos_coef,
+            dtype=torch.float32, device=logits.device
+        )
+
+        p_tid = 0
+        for bs, (idx, _) in enumerate(indices):
+            pred_masks = []
+            seed_idx = targets[bs]['seed_idx'].long()  # [1024]
+            pred_mask = outputs['pred_masks'][bs]  # [256, super_num]
+            pred_mask = (pred_mask > 0).float()  # [256, super_num]
+            superpoint = outputs["superpoints"][bs].unsqueeze(0).expand(pred_mask.shape[0], -1)  # (256, 50000)
+            pred_mask = torch.gather(pred_mask, 1, superpoint)  # (256, 50000)
+            pred_seed_masks = pred_mask[:, seed_idx]  # [256, 1024]
+            for i in idx:
+                pred_masks.append(pred_seed_masks[i]) 
+            pred_masks = torch.stack(pred_masks, dim=0).cpu().numpy()  # [n, 1024]
+
+            for tid in range(pred_masks.shape[0]):
+                tgt_idx = torch.tensor([i for i, v in enumerate(pred_masks[tid]) if v == 1]).long()
+                positive_map[bs][tgt_idx] = pmap[p_tid]
+                modi_positive_map[bs][tgt_idx] = pmap_modi[p_tid]
+                pron_positive_map[bs][tgt_idx] = pmap_pron[p_tid]
+                other_positive_map[bs][tgt_idx] = pmap_other[p_tid]
+                rel_positive_map[bs][tgt_idx] = pmap_rel[p_tid]
+                mask[bs][tgt_idx] = 1.0
+                p_tid += 1
+
+        positive_map = positive_map > 0
+
+        # step text mask
+        # Token mask for matches <> 'not mentioned'
+        tmask = torch.full(
+            (len(logits), logits.shape[-1]),
+            self.eos_coef,
+            dtype=torch.float32, device=logits.device
+        )   # [B, L]
+        tmask[torch.arange(len(inds)), inds] = 1.0
+
+        # Positive logits are those who correspond to a match
+        positive_logits = -logits.masked_fill(~positive_map, 0)
+        negative_logits = logits
+        other_entity_neg_term = negative_logits.masked_fill(~(other_positive_map>0), 0)
+
+        modi_positive_logits = -logits.masked_fill(~(modi_positive_map>0), 0)
+        pron_positive_logits = -logits.masked_fill(~(pron_positive_map>0), 0)
+        rel_positive_logits = -logits.masked_fill(~(rel_positive_map>0), 0)
+
+        pos_modi_term = modi_positive_logits.sum(2)
+        pos_pron_term = pron_positive_logits.sum(2)
+        pos_rel_term = rel_positive_logits.sum(2)
+
+        # number of the token
+        nb_modi_pos_token = (modi_positive_map>0).sum(2) + 1e-6
+        nb_pron_pos_token = (pron_positive_map>0).sum(2) + 1e-6
+        nb_rel_pos_token = (rel_positive_map>0).sum(2) + 1e-6
+
+        ###############################
+        # NOTE loss1: object --> text #
+        ###############################
+        boxes_with_pos = positive_map.any(2)
+        pos_term = positive_logits.sum(2)
+        # note negative term
+        neg_term = (negative_logits+other_entity_neg_term).logsumexp(2)
+        nb_pos_token = positive_map.sum(2) + 1e-6
+        entropy = -torch.log(nb_pos_token+1e-6) / nb_pos_token
+        box_to_token_loss_ = (
+            pos_term/nb_pos_token \
+            + 0.2*pos_modi_term/nb_modi_pos_token \
+            + 0.2*pos_pron_term/nb_pron_pos_token \
+            + 0.1*pos_rel_term/nb_rel_pos_token \
+            + neg_term
+        ).masked_fill(~boxes_with_pos, 0)
+        box_to_token_loss = (box_to_token_loss_ * mask).sum()
+
+        ###############################
+        # NOTE loss2: text --> object #
+        ###############################
+        tokens_with_pos = (positive_map + (modi_positive_map>0) + (pron_positive_map>0) + (rel_positive_map>0)).any(1)
+        tmask[positive_map.any(1)] = 1.0
+        tmask[(modi_positive_map>0).any(1)] = 0.2
+        tmask[(pron_positive_map>0).any(1)] = 0.2
+        tmask[(rel_positive_map>0).any(1)] = 0.1
+        tmask[torch.arange(len(inds)), inds-1] = 0.1
+
+        pos_term = positive_logits.sum(1)
+        pos_modi_term = modi_positive_logits.sum(1)
+        pos_pron_term = pron_positive_logits.sum(1)
+        pos_rel_term = rel_positive_logits.sum(1)
+        # note
+        pos_term = pos_term + pos_modi_term + pos_pron_term + pos_rel_term
+
+        neg_term = negative_logits.logsumexp(1)
+        nb_pos_obj = positive_map.sum(1) + modi_positive_map.sum(1) + pron_positive_map.sum(1) \
+             + rel_positive_map.sum(1) + 1e-6
+
+        entropy = -torch.log(nb_pos_obj+1e-6) / nb_pos_obj
+        token_to_box_loss = (
+            (entropy + pos_term / nb_pos_obj + neg_term)
+        ).masked_fill(~tokens_with_pos, 0)
+        token_to_box_loss = (token_to_box_loss * tmask).sum()   
+
+        # total loss
+        tot_loss = (box_to_token_loss + token_to_box_loss) / 2
+        return {"loss_sem_align_seed": tot_loss / num_boxes}
 
 
     def _get_src_permutation_idx(self, indices):
@@ -695,7 +853,8 @@ class SetCriterion_mask(nn.Module):
             'boxes': self.loss_boxes,      # box loss
             'masks': self.loss_masks,      # mask loss
             'labels': self.loss_pos_align, # position alignment
-            'contrastive_align': self.loss_sem_align   # semantic alignment
+            'contrastive_align': self.loss_sem_align,   # semantic alignment
+            'seed_align': self.loss_sem_align_seed,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, auxi_indices, **kwargs)
@@ -741,7 +900,7 @@ class SetCriterion_mask(nn.Module):
         return losses, indices
 
 # BRIEF loss
-def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
+def compute_hungarian_loss_mask_seedalign(end_points, num_decoder_layers, set_criterion,
                            query_points_obj_topk=5):
     """Compute Hungarian matching loss containing CE, bbox and giou."""
     prefixes = ['last_'] + [f'{i}head_' for i in range(num_decoder_layers - 1)]
@@ -763,6 +922,8 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
     box_label_mask = end_points['box_label_mask']           # (132,) target object mask
     auxi_entity_positive_map = end_points['auxi_entity_positive_map']
     auxi_box = end_points['auxi_box']
+    # seed index
+    seed_idx = end_points['seed_inds']
 
     target = [
         {
@@ -775,18 +936,22 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
             "other_entity_map": other_entity_map[b, box_label_mask[b].bool()],
             "rel_positive_map": rel_positive_map[b, box_label_mask[b].bool()],
             "auxi_entity_positive_map": auxi_entity_positive_map[b, 0].unsqueeze(0),
-            "auxi_box": auxi_box[b]
+            "auxi_box": auxi_box[b],
+            "seed_idx": seed_idx[b]
         }
         for b in range(gt_labels.shape[0])
     ]
 
-    loss_ce, loss_bbox, loss_giou, loss_sem_align, loss_mask, loss_dice = 0, 0, 0, 0, 0, 0
+    loss_ce, loss_bbox, loss_giou, loss_sem_align, loss_mask, loss_dice, loss_sem_align_seed = 0, 0, 0, 0, 0, 0, 0
     for prefix in prefixes:
         output = {}
         if 'proj_tokens' in end_points:
             output['proj_tokens'] = end_points['proj_tokens']           
             output['proj_queries'] = end_points[f'{prefix}proj_queries']
             output['tokenized'] = end_points['tokenized']
+
+        if prefix == "last_":
+            output['proj_seeds'] = end_points['proj_seeds']
 
         # STEP Get predicted boxes and labels
         pred_center = end_points[f'{prefix}center']     # B, K, 3
@@ -812,6 +977,7 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
         loss_giou += losses.get('loss_giou', 0)
         loss_mask += losses.get('loss_mask')
         loss_dice += losses.get('loss_dice')
+        loss_sem_align_seed += losses.get('loss_sem_align_seed')
         if 'proj_tokens' in end_points:
             loss_sem_align += losses['loss_sem_align']
 
@@ -833,6 +999,7 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
             + 5 * loss_bbox
             + loss_giou
             + weight * loss_sem_align
+            + weight * loss_sem_align_seed
         ) + 10 * loss_mask + 2 * loss_dice
     )
     end_points['loss_ce'] = loss_ce
@@ -843,4 +1010,5 @@ def compute_hungarian_loss_mask(end_points, num_decoder_layers, set_criterion,
     end_points['loss'] = loss
     end_points['loss_mask'] = loss_mask
     end_points['loss_dice'] = loss_dice
+    end_points['loss_sem_align_seed'] = loss_sem_align_seed
     return loss, end_points

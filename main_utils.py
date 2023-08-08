@@ -27,6 +27,7 @@ from torch.nn.parallel import DistributedDataParallel
 from models import HungarianMatcher, SetCriterion, compute_hungarian_loss
 from models import HungarianMatcher_mask, SetCriterion_mask, compute_hungarian_loss_mask
 from models import HungarianMatcher_maskalign, SetCriterion_maskalign, compute_hungarian_loss_maskalign
+from models import HungarianMatcher_mask_seedalign, SetCriterion_mask_seedalign, compute_hungarian_loss_mask_seedalign
 from utils import get_scheduler, setup_logger
 
 from utils import record_tensorboard
@@ -101,6 +102,7 @@ def parse_option():
     parser.add_argument('--small_lr', action='store_true')
     parser.add_argument('--mask_loss_align', action='store_true')
     parser.add_argument('--larger', action='store_true')
+    parser.add_argument('--mask_loss_seedalign', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -292,6 +294,15 @@ class BaseTrainTester:
                 losses=losses, eos_coef=0.1, temperature=0.07
             )
             criterion = compute_hungarian_loss_maskalign
+        elif args.mask_loss_seedalign:
+            losses.append('masks')
+            losses.append('seed_align')
+            matcher = HungarianMatcher_mask_seedalign(1, 0, 2, args.use_soft_token_loss)
+            set_criterion = SetCriterion_mask_seedalign(
+                matcher=matcher,
+                losses=losses, eos_coef=0.1, temperature=0.07
+            )
+            criterion = compute_hungarian_loss_mask_seedalign
         else:
             matcher = HungarianMatcher(1, 0, 2, args.use_soft_token_loss)
             set_criterion = SetCriterion(
@@ -332,6 +343,7 @@ class BaseTrainTester:
                     "params": [
                         p for n, p in model.named_parameters()
                         if "x_mask" in n or "x_query" in n or "seed_decoder" in n
+                        or "contrastive_align_projection_seed" in n
                     ],
                     "lr": args.lr
                 },
@@ -340,6 +352,7 @@ class BaseTrainTester:
                         p for n, p in model.named_parameters()
                         if "backbone_net" not in n and "text_encoder" not in n 
                         and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
+                        and "contrastive_align_projection_seed" not in n
                         and p.requires_grad
                     ],
                     "lr": args.lr * 0.01
