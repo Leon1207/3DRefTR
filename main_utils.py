@@ -103,6 +103,7 @@ def parse_option():
     parser.add_argument('--mask_loss_align', action='store_true')
     parser.add_argument('--larger', action='store_true')
     parser.add_argument('--mask_loss_seedalign', action='store_true')
+    parser.add_argument('--seed_align_lr', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -343,7 +344,41 @@ class BaseTrainTester:
                     "params": [
                         p for n, p in model.named_parameters()
                         if "x_mask" in n or "x_query" in n or "seed_decoder" in n
+                    ],
+                    "lr": args.lr
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "backbone_net" not in n and "text_encoder" not in n 
+                        and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
+                        and p.requires_grad
+                    ],
+                    "lr": args.lr * 0.01
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "backbone_net" in n and p.requires_grad
+                    ],
+                    "lr": args.lr_backbone * 0.01
+                },
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "text_encoder" in n and p.requires_grad
+                    ],
+                    "lr": args.text_encoder_lr * 0.01
+                }
+            ]
+        elif args.seed_align_lr:
+            param_dicts = [
+                {
+                    "params": [
+                        p for n, p in model.named_parameters()
+                        if "x_mask" in n or "x_query" in n or "seed_decoder" in n
                         or "contrastive_align_projection_seed" in n
+                        or "cross_encoder" in n
                     ],
                     "lr": args.lr
                 },
@@ -353,6 +388,7 @@ class BaseTrainTester:
                         if "backbone_net" not in n and "text_encoder" not in n 
                         and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
                         and "contrastive_align_projection_seed" not in n
+                        and "cross_encoder" not in n
                         and p.requires_grad
                     ],
                     "lr": args.lr * 0.01
