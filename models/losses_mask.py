@@ -256,7 +256,7 @@ class HungarianMatcher_mask(nn.Module):
         self.cost_class = cost_class
         self.cost_bbox = cost_bbox
         self.cost_giou = cost_giou
-        self.cost_masks = 0.001  # mask weight
+        self.cost_masks = 0.0002  # mask weight
         assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0
         self.soft_token = soft_token
 

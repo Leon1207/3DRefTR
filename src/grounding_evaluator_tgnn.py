@@ -94,6 +94,8 @@ class GroundingEvaluator:
         self.gts.update({'mask_sem': 1e-14})
         self.dets.update({'boxiou_25': 0})
         self.gts.update({'boxiou_25': 1e-14})
+        self.dets.update({'box2mask': 0})
+        self.gts.update({'box2mask': 1e-14})
 
     def print_stats(self):
         """Print accumulated accuracies."""
@@ -127,6 +129,7 @@ class GroundingEvaluator:
         self.logger.info('mask_pos' + ' ' +  str(self.dets['mask_pos'] / self.gts['mask_pos']))
         self.logger.info('mask_sem' + ' ' +  str(self.dets['mask_sem'] / self.gts['mask_sem']))
         self.logger.info('boxiouAcc@25' + ' ' +  str(self.dets['boxiou_25'] / self.gts['boxiou_25']))
+        self.logger.info('box2mask@miou' + ' ' +  str(self.dets['box2mask'] / self.gts['box2mask']))
 
 
     def synchronize_between_processes(self):
@@ -159,9 +162,9 @@ class GroundingEvaluator:
         """
         # NOTE Two Evaluation Ways: position alignment, semantic alignment
         # self.evaluate_bbox_by_pos_align(end_points, prefix)
-        # self.evaluate_bbox_by_sem_align(end_points, prefix)
-        self.evaluate_masks_by_pos_align(end_points, prefix)
-        self.evaluate_masks_by_sem_align(end_points, prefix)
+        self.evaluate_bbox_by_sem_align(end_points, prefix)
+        # self.evaluate_masks_by_pos_align(end_points, prefix)
+        # self.evaluate_masks_by_sem_align(end_points, prefix)
     
     # BRIEF position alignment
     def evaluate_bbox_by_pos_align(self, end_points, prefix):
@@ -271,7 +274,7 @@ class GroundingEvaluator:
         """
         # step get the position label and GT box 
         positive_map, modify_positive_map, pron_positive_map, other_entity_map, \
-            auxi_entity_positive_map, rel_positive_map, gt_bboxes = self._parse_gt(end_points)    
+            auxi_entity_positive_map, rel_positive_map, gt_masks, gt_bboxes, coords = self._parse_gt_mask(end_points)   
         
         # Parse predictions
         pred_center = end_points[f'{prefix}center']  # B, Q, 3
@@ -356,6 +359,23 @@ class GroundingEvaluator:
             ious = ious.reshape(top.size(0), top.size(0), top.size(1))
             ious = ious[torch.arange(len(ious)), torch.arange(len(ious))]
 
+            # box to mask
+            top1 = scores.argsort(1, True)[:, :1] 
+            pbox_top1 = pred_bbox[bid, top1.reshape(-1)]
+            points = coords
+
+            center = pbox_top1[0, :3]
+            dims = pbox_top1[0, 3:]
+
+            min_coords = center - dims / 2
+            max_coords = center + dims / 2
+
+            box2mask = ((points >= min_coords) & (points <= max_coords)).all(dim=-1).float()
+            iou_box2mask = self.calculate_masks_iou(box2mask, gt_masks[bid])
+
+            self.gts['box2mask'] += 1
+            self.dets['box2mask'] += iou_box2mask
+
             # step Measure IoU>threshold, ious are (obj, 10)
             for t in self.thresholds:
                 thresholded = ious > t
@@ -413,6 +433,7 @@ class GroundingEvaluator:
         other_entity_map = torch.clone(end_points['other_entity_map'])          # other(including auxi)
         auxi_entity_positive_map = torch.clone(end_points['auxi_entity_positive_map'])  # auxi
         rel_positive_map = torch.clone(end_points['rel_positive_map'])
+        coords = torch.clone(end_points['coords'])
 
         positive_map[positive_map > 0] = 1                      
         gt_center = end_points['center_label'][:, :, 0:3]       
@@ -424,7 +445,7 @@ class GroundingEvaluator:
             gt_bboxes = gt_bboxes[:, :1]        # (B, 1, 6)
         
         return positive_map, modify_positive_map, pron_positive_map, other_entity_map, auxi_entity_positive_map, \
-            rel_positive_map, gt_bboxes
+            rel_positive_map, gt_bboxes, coords
     
 
     # BRIEF position alignment

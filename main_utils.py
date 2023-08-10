@@ -711,9 +711,9 @@ class BaseTrainTester:
         # STEP Forward pass
         end_points = model(inputs)
 
-        from thop import profile
-        macs, _ = profile(model, inputs=(inputs, ))
-        print(f"Total FLOPs: {macs} (or {macs / 1e9} GFLOPs)")
+        # from thop import profile
+        # macs, _ = profile(model, inputs=(inputs, ))
+        # print(f"Total FLOPs: {macs} (or {macs / 1e9} GFLOPs)")
 
         # STEP Compute loss
         for key in batch_data:

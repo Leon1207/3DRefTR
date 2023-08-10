@@ -114,8 +114,8 @@ class TrainTester(BaseTrainTester):
             data_path = args.data_root,
             self_attend=args.self_attend
         )
-        params =  sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6
-        print(f'Total parameters: {params:.2f}M')
+        # params =  sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6
+        # print(f'Total parameters: {params:.2f}M')
         return model
 
     # BRIEF input data.
