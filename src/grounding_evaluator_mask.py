@@ -63,7 +63,7 @@ class GroundingEvaluator:
         self.filter_non_gt_boxes = filter_non_gt_boxes
         self.reset()
         self.logger = logger
-        self.mask_visualization = False
+        self.mask_visualization = True
 
     def reset(self):
         """Reset accumulators to empty."""
@@ -683,8 +683,8 @@ class GroundingEvaluator:
 
             # visualization for mask
             if self.mask_visualization:
-                wandb.init(project="vis", name="mask")
-                print("iou: ", iou_score_sem)
+                wandb.init(project="vis", name="mask_gt")
+                # print("iou: ", iou_score_sem)
                 point_cloud = end_points['point_clouds'][bid]
                 og_color = end_points['og_color'][bid]
                 point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
@@ -707,29 +707,29 @@ class GroundingEvaluator:
                 point_cloud[mask_idx, 3:] = red
                 # gt_mask_idx = gt_masks[bid][0] == 1
                 # point_cloud[gt_mask_idx, 3:] = blue
-                print("shape: ", point_cloud[mask_idx].shape[0])
+                # print("shape: ", point_cloud[mask_idx].shape[0])
 
                 wandb.log({
                         "point_scene": wandb.Object3D({
                             "type": "lidar/beta",
                             "points": point_cloud,
-                            "boxes": np.array(
-                                [
-                                    {
-                                        "corners": c.tolist(),
-                                        "label": "target",
-                                        "color": [0, 255, 0]
-                                    }
-                                    for c in gt_box
-                                ] + [ 
-                                    {
-                                        "corners": c.tolist(),
-                                        "label": "predicted",
-                                        "color": [0, 0, 255]
-                                    }
-                                    for c in pred_bbox
-                                ]
-                            )
+                            # "boxes": np.array(
+                            #     [
+                            #         {
+                            #             "corners": c.tolist(),
+                            #             "label": "target",
+                            #             "color": [0, 255, 0]
+                            #         }
+                            #         for c in gt_box
+                            #     ] + [ 
+                            #         {
+                            #             "corners": c.tolist(),
+                            #             "label": "predicted",
+                            #             "color": [0, 0, 255]
+                            #         }
+                            #         for c in pred_bbox
+                            #     ]
+                            # )
                         }),
                         "utterance": wandb.Html(utterances),
                     })

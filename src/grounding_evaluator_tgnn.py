@@ -92,6 +92,26 @@ class GroundingEvaluator:
         self.gts.update({'mask_pos': 1e-14})
         self.dets.update({'mask_sem': 0})
         self.gts.update({'mask_sem': 1e-14})
+        self.dets.update({'vd_mask': 0})
+        self.dets.update({'vid_mask': 0})
+        self.dets.update({'hard_mask': 0})
+        self.dets.update({'easy_mask': 0})
+        self.dets.update({'unique_mask': 0})
+        self.dets.update({'multi_mask': 0})
+        self.dets.update({'vd50_mask': 0})
+        self.dets.update({'vid50_mask': 0})
+        self.dets.update({'hard50_mask': 0})
+        self.dets.update({'easy50_mask': 0})
+        self.dets.update({'unique50_mask': 0})
+        self.dets.update({'multi50_mask': 0})
+        self.dets.update({'overall_mask': 0})
+        self.dets.update({'overall50_mask': 0})
+        self.gts.update({'vd_num': 0})
+        self.gts.update({'vid_num': 0})
+        self.gts.update({'easy_num': 0})
+        self.gts.update({'hard_num': 0})
+        self.gts.update({'unique_num': 0})
+        self.gts.update({'multi_num': 0})
         self.dets.update({'boxiou_25': 0})
         self.gts.update({'boxiou_25': 1e-14})
         self.dets.update({'box2mask': 0})
@@ -125,11 +145,27 @@ class GroundingEvaluator:
         self.logger.info('iou@0.50')
         for field in ['easy50', 'hard50', 'vd50', 'vid50', 'unique50', 'multi50']:
             self.logger.info(field + ' ' +  str(self.dets[field] / self.gts[field]))
-        self.logger.info('iou@mask-top1')
-        self.logger.info('mask_pos' + ' ' +  str(self.dets['mask_pos'] / self.gts['mask_pos']))
+        self.logger.info('mask@mean iou')
+        self.logger.info('mask_pos' + ' ' +  str(self.dets['mask_pos'] / self.gts['mask_sem']))
         self.logger.info('mask_sem' + ' ' +  str(self.dets['mask_sem'] / self.gts['mask_sem']))
-        self.logger.info('boxiouAcc@25' + ' ' +  str(self.dets['boxiou_25'] / self.gts['boxiou_25']))
-        self.logger.info('box2mask@miou' + ' ' +  str(self.dets['box2mask'] / self.gts['box2mask']))
+        self.logger.info('mask@kiou')
+        self.logger.info('unique25' + ' ' +  str(self.dets['unique_mask'] / self.gts['unique_num']))
+        self.logger.info('unique50' + ' ' +  str(self.dets['unique50_mask'] / self.gts['unique_num']))
+        self.logger.info('multi25' + ' ' +  str(self.dets['multi_mask'] / self.gts['multi_num']))
+        self.logger.info('multi50' + ' ' +  str(self.dets['multi50_mask'] / self.gts['multi_num']))
+        self.logger.info('overall25' + ' ' +  str(self.dets['overall_mask'] / self.gts['box2mask']))
+        self.logger.info('overall50' + ' ' +  str(self.dets['overall50_mask'] / self.gts['box2mask']))
+        self.logger.info('mask@identity')
+        self.logger.info('vd25' + ' ' +  str(self.dets['vd_mask'] / self.gts['vd_num']))
+        self.logger.info('vd50' + ' ' +  str(self.dets['vd50_mask'] / self.gts['vd_num']))
+        self.logger.info('vid25' + ' ' +  str(self.dets['vid_mask'] / self.gts['vid_num']))
+        self.logger.info('vid50' + ' ' +  str(self.dets['vid50_mask'] / self.gts['vid_num']))
+        self.logger.info('easy25' + ' ' +  str(self.dets['easy_mask'] / self.gts['easy_num']))
+        self.logger.info('easy50' + ' ' +  str(self.dets['easy50_mask'] / self.gts['easy_num']))
+        self.logger.info('hard25' + ' ' +  str(self.dets['hard_mask'] / self.gts['hard_num']))
+        self.logger.info('hard50' + ' ' +  str(self.dets['hard50_mask'] / self.gts['hard_num']))
+        self.logger.info('box2mask@mean iou')
+        self.logger.info('iou' + ' ' +  str(self.dets['box2mask'] / self.gts['box2mask']))
 
 
     def synchronize_between_processes(self):
@@ -370,11 +406,99 @@ class GroundingEvaluator:
             min_coords = center - dims / 2
             max_coords = center + dims / 2
 
-            box2mask = ((points >= min_coords) & (points <= max_coords)).all(dim=-1).float()
+            box2mask = ((points >= min_coords) & (points <= max_coords)).all(dim=-1).int()
             iou_box2mask = self.calculate_masks_iou(box2mask, gt_masks[bid])
 
             self.gts['box2mask'] += 1
             self.dets['box2mask'] += iou_box2mask
+
+            if end_points['is_view_dep'][bid]:
+                self.gts['vd_num'] += 1
+            else:
+                self.gts['vid_num'] += 1
+            if end_points['is_unique'][bid]:
+                self.gts['unique_num'] += 1
+            else:
+                self.gts['multi_num'] += 1
+            if end_points['is_hard'][bid]:
+                self.gts['hard_num'] += 1
+            else:
+                self.gts['easy_num'] += 1
+
+            if iou_box2mask > 0.25:
+                self.dets['overall_mask'] += 1
+                if end_points['is_view_dep'][bid]:
+                    self.dets['vd_mask'] += 1
+                else:
+                    self.dets['vid_mask'] += 1
+                if end_points['is_hard'][bid]:
+                    self.dets['hard_mask'] += 1
+                else:
+                    self.dets['easy_mask'] += 1
+                if end_points['is_unique'][bid]:
+                    self.dets['unique_mask'] += 1
+                else:
+                    self.dets['multi_mask'] += 1
+            if iou_box2mask > 0.5:
+                self.dets['overall50_mask'] += 1
+                if end_points['is_view_dep'][bid]:
+                    self.dets['vd50_mask'] += 1
+                else:
+                    self.dets['vid50_mask'] += 1
+                if end_points['is_hard'][bid]:
+                    self.dets['hard50_mask'] += 1
+                else:
+                    self.dets['easy50_mask'] += 1
+                if end_points['is_unique'][bid]:
+                    self.dets['unique50_mask'] += 1
+                else:
+                    self.dets['multi50_mask'] += 1
+
+            # visualization for mask
+            if self.mask_visualization:
+                wandb.init(project="vis", name="mask_res")
+                point_cloud = end_points['point_clouds'][bid]
+                og_color = end_points['og_color'][bid]
+                point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
+                red = torch.tensor([255.0, 0.0, 0.0]).cuda()
+                blue = torch.tensor([0.0, 0.0, 255.0]).cuda()
+                green = torch.tensor([0.0, 255.0, 0.0]).cuda()
+
+                gt_center = end_points['center_label'][bid, :, 0:3]       
+                gt_size = end_points['size_gts'][bid]                        
+                gt_box = torch.cat([gt_center, gt_size], dim=-1).cpu()
+
+                pred_center = end_points[f'{prefix}center'][bid]
+                pred_size = end_points[f'{prefix}pred_size'][bid]
+                pred_bbox = torch.cat([pred_center, pred_size], dim=-1).cpu()[top1.reshape(-1)]
+
+                utterances = end_points['utterances'][bid]
+                gt_box = box2points(gt_box[..., :6])
+                pred_bbox = box2points(pred_bbox[..., :6])
+
+                mask_idx = box2mask[0] == 1
+                point_cloud[mask_idx, 3:] = green
+                # gt_mask_idx = gt_masks[bid][0] == 1
+                # point_cloud[gt_mask_idx, 3:] = blue
+                # print("shape: ", point_cloud[mask_idx].shape[0])
+
+                wandb.log({
+                        "point_scene": wandb.Object3D({
+                            "type": "lidar/beta",
+                            "points": point_cloud,
+                            "boxes": np.array(
+                                [ 
+                                    {
+                                        "corners": c.tolist(),
+                                        # "label": "predicted",
+                                        "color": [0, 255, 0]
+                                    }
+                                    for c in pred_bbox
+                                ]
+                            )
+                        }),
+                        "utterance": wandb.Html(utterances),
+                    })
 
             # step Measure IoU>threshold, ious are (obj, 10)
             for t in self.thresholds:

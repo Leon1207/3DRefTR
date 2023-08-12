@@ -165,6 +165,7 @@ class BeaUTyDETR(nn.Module):
         end_points['seed_inds'] = end_points['fp2_inds']
         end_points['seed_xyz'] = end_points['fp2_xyz']
         end_points['seed_features'] = end_points['fp2_features']
+        # end_points['coords'] = inputs['point_clouds'][..., 0:3].contiguous()
         
         # step 2. Text encoder
         tokenized = self.tokenizer.batch_encode_plus(
