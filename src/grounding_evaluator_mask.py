@@ -63,7 +63,7 @@ class GroundingEvaluator:
         self.filter_non_gt_boxes = filter_non_gt_boxes
         self.reset()
         self.logger = logger
-        self.mask_visualization = True
+        self.mask_visualization = False
 
     def reset(self):
         """Reset accumulators to empty."""

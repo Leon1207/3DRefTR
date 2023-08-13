@@ -254,7 +254,7 @@ class BeaUTyDETR_spseg_width(nn.Module):
         points_features = end_points['fp2_features']
         text_feats = end_points['text_feats']
         text_padding_mask = end_points['text_attention_mask']
-        # end_points['coords'] = inputs['point_clouds'][..., 0:3].contiguous()
+        end_points['coords'] = inputs['point_clouds'][..., 0:3].contiguous()
         
         # STEP 2. Box encoding
         if self.butd:
