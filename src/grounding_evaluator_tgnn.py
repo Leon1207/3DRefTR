@@ -406,7 +406,7 @@ class GroundingEvaluator:
             min_coords = center - dims / 2
             max_coords = center + dims / 2
 
-            box2mask = ((points >= min_coords) & (points <= max_coords)).all(dim=-1).int()
+            box2mask = ((points >= min_coords) & (points <= max_coords)).all(dim=-1).float()
             iou_box2mask = self.calculate_masks_iou(box2mask, gt_masks[bid])
 
             self.gts['box2mask'] += 1

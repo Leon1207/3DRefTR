@@ -380,7 +380,7 @@ class BeaUTyDETR_spseg(nn.Module):
             ).squeeze(0)  
             pred_masks.append(pred_mask)
 
-        end_points['pred_masks'] = pred_masks  # [B, 256, super_num]
+        end_points['last_pred_masks'] = pred_masks  # [B, 256, super_num]
 
         return end_points
 
