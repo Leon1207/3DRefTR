@@ -9,13 +9,11 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distri
     --dataset scanrefer --test_dataset scanrefer \
     --detect_intermediate --joint_det \
     --use_soft_token_loss --use_contrastive_align \
-    --log_dir log/spformer_731version_width_match_smalllr_none \
+    --log_dir log/spformer_731version_onlyres2_none \
     --lr_decay_epochs 50 75 \
     --pp_checkpoint /userhome/backup_lhj/zyx/dataset/pointcloud/data_for_eda/scannet_others_processed/gf_detector_l6o256.pth \
-    --butd --self_attend --augment_det \
-    --max_epoch 100 \
-    --model BeaUTyDETR_spseg_width \
+    --self_attend --augment_det \
+    --max_epoch 80 \
+    --model BeaUTyDETR_spseg_width_onlyres \
     --mask_loss \
-    --small_lr \
     --exp EDA_spseg \
-    --self_position_embedding none \
