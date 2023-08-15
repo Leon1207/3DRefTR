@@ -30,10 +30,10 @@ class TensorBoard():
     def dump_tensorboard(self, phase, timestamp):
         log = {
             # phase:[value]
-            "loss": ["loss", "loss_bbox", "loss_ce", "loss_sem_align", "loss_giou", \
-                "query_points_generation_loss", "loss_mask", "loss_dice"],
             # "loss": ["loss", "loss_bbox", "loss_ce", "loss_sem_align", "loss_giou", \
-            # "query_points_generation_loss"],
+            #     "query_points_generation_loss", "loss_mask", "loss_dice"],
+            "loss": ["loss", "loss_bbox", "loss_ce", "loss_sem_align", "loss_giou", \
+            "query_points_generation_loss"],
             "score": ["soft_token_0.25", "soft_token_0.5", "contrastive_0.25", "contrastive_0.5"],
             "learning_rate": ["lr_base", "lr_pointnet"]
         }
@@ -87,9 +87,9 @@ class TensorBoard():
                 "loss_ce": [],
                 "loss_sem_align": [],
                 "loss_giou": [],
-                "query_points_generation_loss": [],
-                "loss_mask": [],
-                "loss_dice": []
+                "query_points_generation_loss": []
+                # "loss_mask": [],
+                # "loss_dice": []
             },
 
             "val_score":{
@@ -105,8 +105,8 @@ class TensorBoard():
                 "loss_ce": [],
                 "loss_sem_align": [],
                 "loss_giou": [],
-                "query_points_generation_loss": [],
-                "loss_mask": [],
-                "loss_dice": []
+                "query_points_generation_loss": []
+                # "loss_mask": [],
+                # "loss_dice": []
             }
         }

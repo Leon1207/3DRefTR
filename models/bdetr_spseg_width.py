@@ -341,7 +341,8 @@ class BeaUTyDETR_spseg_width(nn.Module):
 
             # Position Embedding for Self-Attention
             if self.self_position_embedding == 'none':
-                query_pos = None
+                # query_pos = None
+                query_pos = points_xyz
             elif self.self_position_embedding == 'xyz_learned':
                 query_pos = base_xyz
             elif self.self_position_embedding == 'loc_learned':

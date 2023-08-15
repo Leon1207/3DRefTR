@@ -9,10 +9,10 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.
     --dataset scanrefer --test_dataset scanrefer \
     --detect_intermediate --joint_det \
     --use_soft_token_loss --use_contrastive_align \
-    --log_dir log/eda_box2mask_single \
+    --log_dir log/eda_box2mask_single_release \
     --lr_decay_epochs 50 75 \
-    --butd --self_attend --augment_det \
-    --checkpoint_path /userhome/backup_lhj/lhj/pointcloud/3dvlm/log/scanrefer/scanrefer_single_2gpu/1681781477/ckpt_epoch_64.pth \
+    --self_attend --augment_det \
+    --checkpoint_path /userhome/lyd/3dvlm/log/ScanRefer_single_53_83.pth \
     --model BeaUTyDETR \
     --exp BeaUTyDETR/ \
     --eval 
