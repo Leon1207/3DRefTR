@@ -16,6 +16,5 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distri
     --max_epoch 100 \
     --model BeaUTyDETR_spseg_width \
     --mask_loss \
-    --small_lr \
     --exp EDA_spseg \
     --self_position_embedding xyz_learned \
