@@ -63,7 +63,11 @@ class GroundingEvaluator:
         self.filter_non_gt_boxes = filter_non_gt_boxes
         self.reset()
         self.logger = logger
-        self.mask_visualization = False
+        self.visualization_pred = False
+        self.visualization_gt = False
+        self.bad_case_visualization = False
+        self.kps_points_visualization = False
+        self.bad_case_threshold = 0.15
 
     def reset(self):
         """Reset accumulators to empty."""
@@ -145,10 +149,11 @@ class GroundingEvaluator:
         self.logger.info('mask_pos' + ' ' +  str(self.dets['mask_pos'] / self.gts['mask_sem']))
         self.logger.info('mask_sem' + ' ' +  str(self.dets['mask_sem'] / self.gts['mask_sem']))
         self.logger.info('mask@kiou')
-        self.logger.info('unique25' + ' ' +  str(self.dets['unique_mask'] / self.gts['unique_num']))
-        self.logger.info('unique50' + ' ' +  str(self.dets['unique50_mask'] / self.gts['unique_num']))
-        self.logger.info('multi25' + ' ' +  str(self.dets['multi_mask'] / self.gts['multi_num']))
-        self.logger.info('multi50' + ' ' +  str(self.dets['multi50_mask'] / self.gts['multi_num']))
+        if self.gts['unique_num'] != 0:
+            self.logger.info('unique25' + ' ' +  str(self.dets['unique_mask'] / self.gts['unique_num']))
+            self.logger.info('unique50' + ' ' +  str(self.dets['unique50_mask'] / self.gts['unique_num']))
+            self.logger.info('multi25' + ' ' +  str(self.dets['multi_mask'] / self.gts['multi_num']))
+            self.logger.info('multi50' + ' ' +  str(self.dets['multi50_mask'] / self.gts['multi_num']))
         self.logger.info('overall25' + ' ' +  str(self.dets['overall_mask'] / self.gts['mask_sem']))
         self.logger.info('overall50' + ' ' +  str(self.dets['overall50_mask'] / self.gts['mask_sem']))
         self.logger.info('mask@identity')
@@ -390,6 +395,90 @@ class GroundingEvaluator:
             ious = ious.reshape(top.size(0), top.size(0), top.size(1))
             ious = ious[torch.arange(len(ious)), torch.arange(len(ious))]
 
+            # Check for bad cases
+            if self.bad_case_visualization:
+                wandb.init(project="vis", name="badcase")
+                bad_cases = ious < self.bad_case_threshold  # Here you set your bad_case_threshold
+                if bad_cases.any():
+                    # Get point cloud and original color
+                    point_cloud = end_points['point_clouds'][bid]
+                    og_color = end_points['og_color'][bid]
+                    point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
+                    target_name = end_points['target_name'][bid]
+                    utterances = end_points['utterances'][bid]
+
+                    # Get all boxes and predicted boxes
+                    topk_boxes = 0
+                    all_bboxes = end_points['all_bboxes'][bid].cpu()
+                    pbox_bad_cases = pbox[bad_cases[0]].cpu()[topk_boxes].unsqueeze(0)  # top 1
+                    gt_box = gt_bboxes[bid].cpu()
+
+                    # Convert boxes to points for visualization
+                    all_boxes_points = box2points(all_bboxes[..., :6])  # all boxes
+                    gt_box = box2points(gt_box[..., :6])  # gt boxes
+                    pbox_bad_cases_points = box2points(pbox_bad_cases[..., :6])
+
+                    # Log bad case visualization to wandb
+                    wandb.log({
+                        "bad_case_point_scene": wandb.Object3D({
+                            "type": "lidar/beta",
+                            "points": point_cloud,
+                            "boxes": np.array(
+                                [  # actual boxes
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "actual",
+                                        "color": [0, 255, 0]
+                                    }
+                                    for c in gt_box
+                                ]
+                                + [  # predicted boxes
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "predicted",
+                                        "color": [255, 0, 0]
+                                    }
+                                    for c in pbox_bad_cases_points
+                                ]
+                            )
+                        }),
+                        "target_name": wandb.Html(target_name),
+                        "utterance": wandb.Html(utterances),
+                    })
+
+            # Check for kps points
+            if self.kps_points_visualization:
+                wandb.init(project="vis", name="kps_points")
+                point_cloud = end_points['point_clouds'][bid]
+                og_color = end_points['og_color'][bid]
+                point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
+                kps_points = end_points['query_points_xyz'][bid]
+                red = torch.zeros((256, 3)).cuda()
+                red[:, 0] = 255.0
+                kps_points = torch.cat([kps_points, red], dim=1)
+                total_point = torch.cat([point_cloud, kps_points], dim=0)
+                utterances = end_points['utterances'][bid]
+                gt_box = gt_bboxes[bid].cpu()
+                gt_box = box2points(gt_box[..., :6])
+
+                wandb.log({
+                        "kps_point_scene": wandb.Object3D({
+                            "type": "lidar/beta",
+                            "points": total_point,
+                            "boxes": np.array(
+                                [
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "target",
+                                        "color": [0, 255, 0]
+                                    }
+                                    for c in gt_box
+                                ]
+                            )
+                        }),
+                        "utterance": wandb.Html(utterances),
+                    })
+
             # step Measure IoU>threshold, ious are (obj, 10)
             for t in self.thresholds:
                 thresholded = ious > t
@@ -625,14 +714,6 @@ class GroundingEvaluator:
             top = scores.argsort(1, True)[:, :1]
             pmasks = pred_masks[bid, top.reshape(-1)]
 
-            top5 = scores.argsort(1, True)[:, :5]
-            pmasks_top5 = pred_masks[bid, top5.reshape(-1)]
-            confidences = torch.tensor([0.5, 0.2, 0.15, 0.1, 0.05])  # 0.4085030250274417
-            # confidences = torch.tensor([0.5, 0.3, 0.1, 0.05, 0.05])  # 0.4085030250274417
-            # confidences = torch.tensor([0.4, 0.3, 0.15, 0.1, 0.05])  # 0.396977610971728
-            # confidences = torch.tensor([0.6, 0.2, 0.1, 0.05, 0.05])  # 0.40762728470050485
-            pmasks_confidence = self.confidence_weighted_voting(masks=pmasks, confidences=confidences).unsqueeze(0)
-
             # compute IoU
             iou_score_sem = self.calculate_masks_iou(pmasks, gt_masks[bid])
             # print("{:.14f}".format(iou_score_sem))
@@ -681,55 +762,77 @@ class GroundingEvaluator:
                 else:
                     self.dets['multi50_mask'] += 1
 
-            # visualization for mask
-            if self.mask_visualization:
-                wandb.init(project="vis", name="mask_gt")
-                # print("iou: ", iou_score_sem)
+            # visualization for pres mask and box
+            if self.visualization_pred:
+                wandb.init(project="vis", name="pred")
                 point_cloud = end_points['point_clouds'][bid]
                 og_color = end_points['og_color'][bid]
                 point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
                 red = torch.tensor([255.0, 0.0, 0.0]).cuda()
-                blue = torch.tensor([0.0, 0.0, 255.0]).cuda()
-
-                gt_center = end_points['center_label'][bid, :, 0:3]       
-                gt_size = end_points['size_gts'][bid]                        
-                gt_box = torch.cat([gt_center, gt_size], dim=-1).cpu()
 
                 pred_center = end_points[f'{prefix}center'][bid]
                 pred_size = end_points[f'{prefix}pred_size'][bid]
                 pred_bbox = torch.cat([pred_center, pred_size], dim=-1).cpu()[top.reshape(-1)]
 
                 utterances = end_points['utterances'][bid]
-                gt_box = box2points(gt_box[..., :6])
                 pred_bbox = box2points(pred_bbox[..., :6])
 
                 mask_idx = pmasks[0] == 1
-                point_cloud[mask_idx, 3:] = red
-                # gt_mask_idx = gt_masks[bid][0] == 1
-                # point_cloud[gt_mask_idx, 3:] = blue
-                # print("shape: ", point_cloud[mask_idx].shape[0])
+                pred_cloud = point_cloud
+                pred_cloud[mask_idx, 3:] = red
 
                 wandb.log({
                         "point_scene": wandb.Object3D({
                             "type": "lidar/beta",
-                            "points": point_cloud,
-                            # "boxes": np.array(
-                            #     [
-                            #         {
-                            #             "corners": c.tolist(),
-                            #             "label": "target",
-                            #             "color": [0, 255, 0]
-                            #         }
-                            #         for c in gt_box
-                            #     ] + [ 
-                            #         {
-                            #             "corners": c.tolist(),
-                            #             "label": "predicted",
-                            #             "color": [0, 0, 255]
-                            #         }
-                            #         for c in pred_bbox
-                            #     ]
-                            # )
+                            "points": pred_cloud,
+                            "boxes": np.array(
+                                [ 
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "predicted",
+                                        "color": [0, 0, 255]
+                                    }
+                                    for c in pred_bbox
+                                ]
+                            )
+                        }),
+                        "utterance": wandb.Html(utterances),
+                    })
+                
+
+            # visualization for gt mask and box
+            if self.visualization_gt:
+                wandb.init(project="vis", name="gt")
+                point_cloud = end_points['point_clouds'][bid]
+                og_color = end_points['og_color'][bid]
+                point_cloud[:, 3:] = (og_color + torch.tensor([109.8, 97.2, 83.8]).cuda() / 256) * 256
+                blue = torch.tensor([0.0, 0.0, 255.0]).cuda()
+
+                gt_center = end_points['center_label'][bid, :, 0:3]       
+                gt_size = end_points['size_gts'][bid]                        
+                gt_box = torch.cat([gt_center, gt_size], dim=-1).cpu()
+
+                utterances = end_points['utterances'][bid]
+                gt_box = box2points(gt_box[..., :6])
+
+                gt_cloud = point_cloud
+                gt_mask_idx = gt_masks[bid][0] == 1
+                gt_cloud[gt_mask_idx, 3:] = blue
+
+                wandb.log({
+                        "point_scene": wandb.Object3D({
+                            "type": "lidar/beta",
+                            "points": gt_cloud,
+                            "boxes": np.array(
+                                [
+                                    {
+                                        "corners": c.tolist(),
+                                        "label": "target",
+                                        "color": [0, 255, 0]
+                                    }
+                                    for c in gt_box
+                                ]
+                            )
                         }),
                         "utterance": wandb.Html(utterances),
                     })
@@ -760,20 +863,3 @@ class GroundingEvaluator:
         union = np.logical_or(mask1, mask2)
         iou_score = np.sum(intersection) / np.sum(union)
         return iou_score
-    
-    def confidence_weighted_voting(self, masks, confidences):
-        # Create an empty mask for the final result
-        final_mask = torch.zeros_like(masks[0]).float()
-        
-        # For each mask and its corresponding confidence
-        for mask, confidence in zip(masks, confidences):
-            # Add the mask weighted by its confidence to the final mask
-            final_mask += mask * confidence
-        
-        # Normalize final mask by the sum of confidences
-        final_mask /= torch.sum(confidences)
-        
-        # Threshold the final mask at 0.5 to get binary values
-        final_mask = torch.where(final_mask >= 0.5, 1, 0)
-        
-        return final_mask
