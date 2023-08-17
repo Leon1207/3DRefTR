@@ -27,7 +27,7 @@ from utils.scatter_util import scatter_mean
 import pointnet2_utils
 
 
-class BeaUTyDETR_spseg_width_multistage(nn.Module):
+class ThreeDRefTR_SP(nn.Module):
     """
     3D language grounder.
 
@@ -116,16 +116,14 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             nn.ReLU(), 
             nn.Conv1d(d_model * 2, d_model, 1)
             )
-        self.x_query = nn.ModuleList()
-        for _ in range(self.num_decoder_layers + 1):
-            self.x_query.append(nn.Sequential(
-                nn.Conv1d(d_model, d_model * 2, 1), 
-                nn.ReLU(), 
-                nn.Conv1d(d_model * 2, d_model * 2, 1),
-                nn.ReLU(), 
-                nn.Conv1d(d_model * 2, d_model, 1)
-                ))
-        self.super_grouper = pointnet2_utils.QueryAndGroup(radius=0.2, nsample=2, use_xyz=False, normalize_xyz=True)
+        self.x_query = nn.Sequential(
+            nn.Conv1d(d_model, d_model * 2, 1), 
+            nn.ReLU(), 
+            nn.Conv1d(d_model * 2, d_model * 2, 1),
+            nn.ReLU(), 
+            nn.Conv1d(d_model * 2, d_model, 1)
+            )
+        self.super_grouper = pointnet2_utils.QueryAndGroup(radius=0.4, nsample=2, use_xyz=False, normalize_xyz=True)
 
         # Query initialization
         self.points_obj_cls = PointsObjClsModule(d_model)
@@ -207,7 +205,7 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
     # BRIEF generate query.
     def _generate_queries(self, xyz, features, end_points):
         # kps sampling
-        points_obj_cls_logits = self.points_obj_cls(features)
+        points_obj_cls_logits = self.points_obj_cls(features)  # [B, 1, K=1024]
         end_points['seeds_obj_cls_logits'] = points_obj_cls_logits
         
         # top-k
@@ -226,9 +224,11 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
         return end_points
     
     # segmentation prediction
-    def _seg_seeds_prediction(self, query, mask_feats):
+    def _seg_seeds_prediction(self, query, mask_feats, end_points, prefix=''):
         ## generate seed points masks
         pred_mask_seeds = torch.einsum('bnd,bdm->bnm', query, mask_feats)
+        ## mapping seed points masks to superpoints masks
+        end_points[f'{prefix}pred_mask_seeds'] = pred_mask_seeds
         return pred_mask_seeds
 
     # BRIEF forward.
@@ -254,6 +254,7 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
         points_features = end_points['fp2_features']
         text_feats = end_points['text_feats']
         text_padding_mask = end_points['text_attention_mask']
+        end_points['coords'] = inputs['point_clouds'][..., 0:3].contiguous()
         
         # STEP 2. Box encoding
         if self.butd:
@@ -320,7 +321,7 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
         if self.contrastive_align_loss: 
             end_points['proposal_proj_queries'] = F.normalize(
                 self.contrastive_align_projection_image(query), p=2, dim=-1
-            )
+            )  # [B, 256, 64]
 
         # STEP 6.Proposals
         proposal_center, proposal_size = self.proposal_head(
@@ -329,19 +330,10 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             end_points=end_points,
             prefix='proposal_'
         )
-        query_proposal = self.x_query[0](query.transpose(1, 2)).transpose(1, 2)
-        pred_masks = []
-        for bs in range(query.shape[0]):
-            pred_mask = self._seg_seeds_prediction(
-                query_proposal[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
-                super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
-            ).squeeze(0)  
-            pred_masks.append(pred_mask)
-        end_points['proposal_pred_masks'] = pred_masks  # [B, 256, super_num]
-
         base_xyz = proposal_center.detach().clone()
         base_size = proposal_size.detach().clone()
         query_mask = None
+        query_last = None
 
         # STEP 7. Decoder
         for i in range(self.num_decoder_layers):
@@ -349,7 +341,8 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
 
             # Position Embedding for Self-Attention
             if self.self_position_embedding == 'none':
-                query_pos = None
+                # query_pos = None
+                query_pos = points_xyz
             elif self.self_position_embedding == 'xyz_learned':
                 query_pos = base_xyz
             elif self.self_position_embedding == 'loc_learned':
@@ -385,17 +378,21 @@ class BeaUTyDETR_spseg_width_multistage(nn.Module):
             base_xyz = base_xyz.detach().clone()
             base_size = base_size.detach().clone()
 
-            # step Seg Prediction head
-            query = self.x_query[i+1](query.transpose(1, 2)).transpose(1, 2)
-            pred_masks = []
-            for bs in range(query.shape[0]):
-                pred_mask = self._seg_seeds_prediction(
-                    query[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
-                    super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
-                ).squeeze(0)  
-                pred_masks.append(pred_mask)
+            query_last = query
 
-            end_points[f'{prefix}pred_masks'] = pred_masks  # [B, 256, super_num]
+        # step Seg Prediction head
+        query_last = self.x_query(query_last.transpose(1, 2)).transpose(1, 2)
+        pred_masks = []
+        for bs in range(query.shape[0]):
+            pred_mask = self._seg_seeds_prediction(
+                query_last[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
+                super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
+                end_points=end_points,  # 
+                prefix=prefix
+            ).squeeze(0)  
+            pred_masks.append(pred_mask)
+
+        end_points['last_pred_masks'] = pred_masks  # [B, 256, super_num]
 
         return end_points
 

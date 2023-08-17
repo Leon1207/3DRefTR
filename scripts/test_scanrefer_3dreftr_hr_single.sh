@@ -13,7 +13,6 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.
     --lr_decay_epochs 50 75 \
     --self_attend --augment_det \
     --checkpoint_path /userhome/lyd/3dvlm/log/spformer_731version_width_match0.0002_smalllr_paperckp_single/scanrefer/EDA_spseg/1691812488/ckpt_epoch_92.pth \
-    --model BeaUTyDETR_spseg_width \
-    --mask_loss \
+    --model ThreeDRefTR_HR \
     --small_lr \
     --eval

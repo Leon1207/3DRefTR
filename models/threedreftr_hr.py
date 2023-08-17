@@ -23,11 +23,11 @@ from .modules import (
 from .encoder_decoder_layers import (
     BiEncoder, BiEncoderLayer, BiDecoderLayer
 )
-from utils.scatter_util import scatter_mean
-import pointnet2_utils
 
+from pointnet2_modules import PointnetFPModule
+import pytorch_utils as pt_utils
 
-class BeaUTyDETR_spseg(nn.Module):
+class ThreeDRefTR_HR(nn.Module):
     """
     3D language grounder.
 
@@ -108,14 +108,6 @@ class BeaUTyDETR_spseg(nn.Module):
         )
         self.cross_encoder = BiEncoder(bi_layer, 3)
 
-        # Mask Feats Generation layer
-        self.x_mask = nn.Sequential(
-            nn.Conv1d(d_model, d_model, 1), 
-            nn.ReLU(), 
-            nn.Conv1d(d_model, d_model, 1)
-            )
-        self.super_grouper = pointnet2_utils.QueryAndGroup(radius=0.2, nsample=2, use_xyz=False, normalize_xyz=True)
-
         # Query initialization
         self.points_obj_cls = PointsObjClsModule(d_model)
         self.gsample_module = GeneralSamplingModule()
@@ -162,11 +154,14 @@ class BeaUTyDETR_spseg(nn.Module):
                 nn.ReLU(),
                 nn.Linear(d_model, 64)
             )
+        
+        # Segmentation Head
+        self.hs_project = nn.Linear(d_model, d_model)
+        self.src_project = nn.Linear(d_model, d_model)
+        self.mask_head = MaskHeadSmallConv(dim=d_model * 2, context_dim=d_model)
 
         # Init
         self.init_bn_momentum()
-    
-    
     # BRIEF visual and text backbones.
     def _run_backbones(self, inputs):
         """Run visual and text backbones."""
@@ -175,12 +170,16 @@ class BeaUTyDETR_spseg(nn.Module):
         end_points['seed_inds'] = end_points['fp2_inds']
         end_points['seed_xyz'] = end_points['fp2_xyz']
         end_points['seed_features'] = end_points['fp2_features']
-        
+
+        # for segmentation head
+        end_points['sa0_xyz'] = inputs['point_clouds'][..., 0:3].contiguous()
+        end_points['sa0_features'] = inputs['point_clouds'][..., 3:].transpose(1, 2).contiguous()
+
         # step 2. Text encoder
         tokenized = self.tokenizer.batch_encode_plus(
             inputs['text'], padding="longest", return_tensors="pt"
         ).to(inputs['point_clouds'].device)
-        
+
         encoded_text = self.text_encoder(**tokenized)
         text_feats = self.text_projector(encoded_text.last_hidden_state)
 
@@ -198,7 +197,7 @@ class BeaUTyDETR_spseg(nn.Module):
         # kps sampling
         points_obj_cls_logits = self.points_obj_cls(features)
         end_points['seeds_obj_cls_logits'] = points_obj_cls_logits
-        
+
         # top-k
         sample_inds = torch.topk(   
             torch.sigmoid(points_obj_cls_logits).squeeze(1),
@@ -213,14 +212,6 @@ class BeaUTyDETR_spseg(nn.Module):
         end_points['query_points_feature'] = features  # (B, F, V)
         end_points['query_points_sample_inds'] = sample_inds  # (B, V)
         return end_points
-    
-    # segmentation prediction
-    def _seg_seeds_prediction(self, query, mask_feats, end_points, prefix=''):
-        ## generate seed points masks
-        pred_mask_seeds = torch.einsum('bnd,bdm->bnm', query, mask_feats)
-        ## mapping seed points masks to superpoints masks
-        end_points[f'{prefix}pred_mask_seeds'] = pred_mask_seeds
-        return pred_mask_seeds
 
     # BRIEF forward.
     def forward(self, inputs):
@@ -257,7 +248,7 @@ class BeaUTyDETR_spseg(nn.Module):
             class_embeddings = self.class_embeddings(self.butd_class_embeddings(inputs['det_class_ids']))
             # step box feature     ([B, 132, 288])
             detected_feats = torch.cat([box_embeddings, class_embeddings.transpose(1, 2)]
-                                        , 1).transpose(1, 2).contiguous()
+                                       , 1).transpose(1, 2).contiguous()
         else:
             detected_mask = None
             detected_feats = None
@@ -275,40 +266,29 @@ class BeaUTyDETR_spseg(nn.Module):
             detected_feats=detected_feats,
             detected_mask=detected_mask
         )
+
         points_features = points_features.transpose(1, 2)
         points_features = points_features.contiguous()
         end_points["text_memory"] = text_feats
-        end_points['seed_features'] = points_features
-        
+        end_points['seed_features'] = points_features  # V', [B, 288, 1024]
+
         # STEP 4. text projection --> 64
         if self.contrastive_align_loss:
             proj_tokens = F.normalize(
                 self.contrastive_align_projection_text(text_feats), p=2, dim=-1
             )
-            end_points['proj_tokens'] = proj_tokens     # ([B, L, 64])
-
-        # STEP 4.1 Mask Feats Generation
-        mask_feats = self.x_mask(points_features)  # [B, 288, 1024]
-        superpoint = inputs['superpoint']  # [B, 50000]
-        end_points['superpoints'] = superpoint
-        source_xzy = inputs['point_clouds'][..., 0:3].contiguous()  # [B, 50000, 3]
-        super_features = []
-        for bs in range(source_xzy.shape[0]):
-            super_xyz = scatter_mean(source_xzy[bs], superpoint[bs], dim=0).unsqueeze(0)  # [1, super_num, 3]
-            grouped_feature = self.super_grouper(points_xyz[bs].unsqueeze(0), super_xyz, mask_feats[bs].unsqueeze(0))  # [1, 288, super_num, nsample]
-            super_feature = F.max_pool2d(grouped_feature, kernel_size=[1, grouped_feature.size(3)]).squeeze(-1).squeeze(0)  # [288, super_num]
-            super_features.append(super_feature)
+            end_points['proj_tokens'] = proj_tokens  # ([B, L, 64])
 
         # STEP 5. Query Points Generation
         end_points = self._generate_queries(
             points_xyz, points_features, end_points
         )
-        cluster_feature = end_points['query_points_feature']    # (B, F=288, V=256)
-        cluster_xyz = end_points['query_points_xyz']            # (B, V=256, 3)
-        query = self.decoder_query_proj(cluster_feature)        
-        query = query.transpose(1, 2).contiguous()              # (B, V=256, F=288)
+        cluster_feature = end_points['query_points_feature']  # (B, F=288, V=256)
+        cluster_xyz = end_points['query_points_xyz']  # (B, V=256, 3)
+        query = self.decoder_query_proj(cluster_feature)
+        query = query.transpose(1, 2).contiguous()  # (B, V=256, F=288)
         # projection 288 --> 64
-        if self.contrastive_align_loss: 
+        if self.contrastive_align_loss:
             end_points['proposal_proj_queries'] = F.normalize(
                 self.contrastive_align_projection_image(query), p=2, dim=-1
             )
@@ -323,11 +303,10 @@ class BeaUTyDETR_spseg(nn.Module):
         base_xyz = proposal_center.detach().clone()
         base_size = proposal_size.detach().clone()
         query_mask = None
-        query_last = None
 
         # STEP 7. Decoder
         for i in range(self.num_decoder_layers):
-            prefix = 'last_' if i == self.num_decoder_layers-1 else f'{i}head_'
+            prefix = 'last_' if i == self.num_decoder_layers - 1 else f'{i}head_'
 
             # Position Embedding for Self-Attention
             if self.self_position_embedding == 'none':
@@ -351,6 +330,10 @@ class BeaUTyDETR_spseg(nn.Module):
                 ),
                 detected_mask=detected_mask if self.butd else None
             )  # (B, V, F)
+
+            if i == self.num_decoder_layers - 1:
+                end_points['query_last_layer'] = query  # O' [B, 256, 288]
+
             # step project
             if self.contrastive_align_loss:
                 end_points[f'{prefix}proj_queries'] = F.normalize(
@@ -359,28 +342,23 @@ class BeaUTyDETR_spseg(nn.Module):
 
             # step box Prediction head
             base_xyz, base_size = self.prediction_heads[i](
-                query.transpose(1, 2).contiguous(),     # ([B, F=288, V=256])
-                base_xyz=cluster_xyz,                   # ([B, 256, 3])
-                end_points=end_points,  # 
+                query.transpose(1, 2).contiguous(),  # ([B, F=288, V=256])
+                base_xyz=cluster_xyz,  # ([B, 256, 3])
+                end_points=end_points,  #
                 prefix=prefix
             )
             base_xyz = base_xyz.detach().clone()
             base_size = base_size.detach().clone()
 
-            query_last = query
-
-        # step Seg Prediction head
-        pred_masks = []
-        for bs in range(query.shape[0]):
-            pred_mask = self._seg_seeds_prediction(
-                query_last[bs].unsqueeze(0),                                  # ([1, F=256, V=288])
-                super_features[bs].unsqueeze(0),                             # ([1, F=288, V=super_num])
-                end_points=end_points,  # 
-                prefix=prefix
-            ).squeeze(0)  
-            pred_masks.append(pred_mask)
-
-        end_points['last_pred_masks'] = pred_masks  # [B, 256, super_num]
+        # segmentation head
+        decoder_hs = end_points['query_last_layer'].transpose(1, 2)  # [B, 288, 256]
+        memory_visual = end_points['seed_features']  # [B, 288, 1024]
+        point_src = self.src_project(end_points['fp2_features'].transpose(1, 2)).transpose(1, 2)  # [B, 288, 1024]
+        point_src = torch.cat([point_src, memory_visual], dim=1)  # [B, 576, 1024]
+        bbox_mask = self.mask_head(point_src, end_points)  # [B, 288, 50000]
+        decoder_hs = self.hs_project(decoder_hs.transpose(1, 2)).transpose(1, 2)
+        seg_masks = torch.einsum("bcn,bcm->bnm", decoder_hs, bbox_mask)  # [B, 256, 50000]
+        end_points['pred_masks'] = seg_masks
 
         return end_points
 
@@ -389,3 +367,42 @@ class BeaUTyDETR_spseg(nn.Module):
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
                 m.momentum = 0.1
+    
+
+class MaskHeadSmallConv(nn.Module):
+
+    def __init__(self, dim, context_dim):
+        super().__init__()
+
+        self.mlp1 = pt_utils.SharedMLP(args=[dim, dim], bn=True)
+        self.mlp2 = pt_utils.SharedMLP(args=[dim, context_dim], bn=True)
+        self.fp1 = PointnetFPModule(mlp=[context_dim * 2, context_dim, context_dim])
+        self.fp2 = PointnetFPModule(mlp=[context_dim * 2, context_dim, context_dim])
+
+        self.adapter1 = nn.Linear(3, context_dim)
+        self.adapter2 = nn.Linear(128, context_dim)
+
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_uniform_(m.weight, a=1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x, end_points):
+
+        # x [B, 576, 1024]
+        x = self.mlp1(x.unsqueeze(-1))  # [B, 576, 1024, 1]
+        x = self.mlp2(x).squeeze(-1)   # [B, 288, 1024]
+
+        sa0_features = end_points['sa0_features']  # [B, 3, 50000]
+        sa0_features = self.adapter1(sa0_features.transpose(1, 2)).transpose(1, 2)  # [B, 288, 50000]
+        sa1_features = end_points['sa1_features']  # [B, 128, 2048]
+        sa1_features = self.adapter2(sa1_features.transpose(1, 2)).transpose(1, 2)  # [B, 288, 2048]
+
+        sa0_xyz = end_points['sa0_xyz']  # [B, 50000, 3]
+        sa1_xyz = end_points['sa1_xyz']  # [B, 2048, 3]
+        sa2_xyz = end_points['sa2_xyz']  # [B, 1024, 3]
+
+        x = self.fp1(sa1_xyz, sa2_xyz, sa1_features, x)  # [B, 288, 2048]
+        x = self.fp2(sa0_xyz, sa1_xyz, sa0_features, x)  # [B, 288, 50000]
+       
+        return x

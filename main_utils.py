@@ -25,9 +25,6 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
 from models import HungarianMatcher, SetCriterion, compute_hungarian_loss
-from models import HungarianMatcher_mask, SetCriterion_mask, compute_hungarian_loss_mask
-from models import HungarianMatcher_maskalign, SetCriterion_maskalign, compute_hungarian_loss_maskalign
-from models import HungarianMatcher_mask_seedalign, SetCriterion_mask_seedalign, compute_hungarian_loss_mask_seedalign
 from utils import get_scheduler, setup_logger
 
 from utils import record_tensorboard
@@ -97,13 +94,8 @@ def parse_option():
     parser.add_argument('--syncbn', action='store_true')
     parser.add_argument('--warmup-epoch', type=int, default=-1)
     parser.add_argument('--warmup-multiplier', type=int, default=100)
-    parser.add_argument('--mask_loss', action='store_true')
     parser.add_argument('--frozen', action='store_true')
     parser.add_argument('--small_lr', action='store_true')
-    parser.add_argument('--mask_loss_align', action='store_true')
-    parser.add_argument('--larger', action='store_true')
-    parser.add_argument('--mask_loss_seedalign', action='store_true')
-    parser.add_argument('--seed_align_lr', action='store_true')
 
     # io
     parser.add_argument('--checkpoint_path', default=None,
@@ -275,42 +267,15 @@ class BaseTrainTester:
     @staticmethod
     def get_criterion(args):
         """Get loss criterion for training."""
-        losses = ['boxes', 'labels']
+        losses = ['boxes', 'labels', 'masks']
         if args.use_contrastive_align:
             losses.append('contrastive_align')
-        if args.mask_loss:
-            losses.append('masks')
-            matcher = HungarianMatcher_mask(1, 0, 2, args.use_soft_token_loss)
-            set_criterion = SetCriterion_mask(
-                matcher=matcher,
-                losses=losses, eos_coef=0.1, temperature=0.07
-            )
-            criterion = compute_hungarian_loss_mask
-        elif args.mask_loss_align:
-            losses.append('masks')
-            losses.append('selection')
-            matcher = HungarianMatcher_maskalign(1, 0, 2, args.use_soft_token_loss)
-            set_criterion = SetCriterion_maskalign(
-                matcher=matcher,
-                losses=losses, eos_coef=0.1, temperature=0.07
-            )
-            criterion = compute_hungarian_loss_maskalign
-        elif args.mask_loss_seedalign:
-            losses.append('masks')
-            losses.append('seed_align')
-            matcher = HungarianMatcher_mask_seedalign(1, 0, 2, args.use_soft_token_loss)
-            set_criterion = SetCriterion_mask_seedalign(
-                matcher=matcher,
-                losses=losses, eos_coef=0.1, temperature=0.07
-            )
-            criterion = compute_hungarian_loss_mask_seedalign
-        else:
-            matcher = HungarianMatcher(1, 0, 2, args.use_soft_token_loss)
-            set_criterion = SetCriterion(
-                matcher=matcher,
-                losses=losses, eos_coef=0.1, temperature=0.07
-            )
-            criterion = compute_hungarian_loss
+        matcher = HungarianMatcher(1, 0, 2, args.use_soft_token_loss)
+        set_criterion = SetCriterion(
+            matcher=matcher,
+            losses=losses, eos_coef=0.1, temperature=0.07
+        )
+        criterion = compute_hungarian_loss
 
         return criterion, set_criterion
 
@@ -352,80 +317,6 @@ class BaseTrainTester:
                         p for n, p in model.named_parameters()
                         if "backbone_net" not in n and "text_encoder" not in n 
                         and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
-                        and p.requires_grad
-                    ],
-                    "lr": args.lr * 0.01
-                },
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "backbone_net" in n and p.requires_grad
-                    ],
-                    "lr": args.lr_backbone * 0.01
-                },
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "text_encoder" in n and p.requires_grad
-                    ],
-                    "lr": args.text_encoder_lr * 0.01
-                }
-            ]
-        elif args.seed_align_lr:
-            param_dicts = [
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "x_mask" in n or "x_query" in n or "seed_decoder" in n
-                        or "contrastive_align_projection_seed" in n
-                        or "cross_encoder" in n
-                    ],
-                    "lr": args.lr
-                },
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "backbone_net" not in n and "text_encoder" not in n 
-                        and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
-                        and "contrastive_align_projection_seed" not in n
-                        and "cross_encoder" not in n
-                        and p.requires_grad
-                    ],
-                    "lr": args.lr * 0.01
-                },
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "backbone_net" in n and p.requires_grad
-                    ],
-                    "lr": args.lr_backbone * 0.01
-                },
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "text_encoder" in n and p.requires_grad
-                    ],
-                    "lr": args.text_encoder_lr * 0.01
-                }
-            ]
-        elif args.larger:
-            param_dicts = [
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "x_mask" in n or "x_query" in n or "seed_decoder" in n
-                        or "contrastive_align_projection_image_larger" in n 
-                        or "contrastive_align_projection_text_larger" in n
-                    ],
-                    "lr": args.lr
-                },
-                {
-                    "params": [
-                        p for n, p in model.named_parameters()
-                        if "backbone_net" not in n and "text_encoder" not in n 
-                        and "x_mask" not in n and "x_query" not in n and "seed_decoder" not in n
-                        and "contrastive_align_projection_image_larger" not in n 
-                        and "contrastive_align_projection_text_larger" not in n
                         and p.requires_grad
                     ],
                     "lr": args.lr * 0.01

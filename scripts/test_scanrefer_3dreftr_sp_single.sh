@@ -9,9 +9,10 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.
     --dataset scanrefer --test_dataset scanrefer \
     --detect_intermediate --joint_det \
     --use_soft_token_loss --use_contrastive_align \
-    --log_dir log/test \
+    --log_dir log/test_3DRefTR-SP-single \
     --lr_decay_epochs 50 75 \
     --self_attend --augment_det \
-    --checkpoint_path /userhome/backup_lhj/lhj/pointcloud/EDA-master/log/scanrefer/scanrefer_single_4gpu/1681780607/ckpt_epoch_71.pth \
-    --num_target 32 \
+    --checkpoint_path /userhome/lyd/3dvlm/log/spformer_731version_width_match0.0002_smalllr_paperckp_single/scanrefer/EDA_spseg/1691812488/ckpt_epoch_92.pth \
+    --model ThreeDRefTR_SP \
+    --small_lr \
     --eval

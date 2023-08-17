@@ -122,6 +122,12 @@ class Joint3DDataset(Dataset):
             save_data(f'{data_path}/{split}_v3scans.pkl', split, data_path)
         self.scans = unpickle_data(f'{self.data_path}/{split}_v3scans.pkl')
         self.scans = list(self.scans)[0]
+
+        # fetch superpoints
+        self.superpoints = {}
+        for scan in self.scans:
+            superpoint = torch.load(os.path.join("/userhome/lyd/RES/superpoint", self.split, scan + "_superpoint.pth"))
+            self.superpoints[scan] = superpoint
         
         # step 4. load text dataset
         if self.split != 'train':
@@ -267,7 +273,7 @@ class Joint3DDataset(Dataset):
                 'anchor_ids': [],   
                 'dataset': 'scanrefer'
             }
-            for anno in reader
+            for anno in reader[:100]
             if anno['scene_id'] in scan_ids
         ]
 
@@ -695,8 +701,10 @@ class Joint3DDataset(Dataset):
                 if anno['auxi_entity'] is not None and len(anno['anchor_ids']):
                     tids.append(anno['anchor_ids'][0])
         point_instance_label = -np.ones(len(scan.pc))
+        gt_masks = np.zeros((MAX_NUM_OBJ, len(scan.pc)))
         for t, tid in enumerate(tids):
             point_instance_label[scan.three_d_objects[tid]['points']] = t
+            gt_masks[t][scan.three_d_objects[tid]['points']] = 1
         
         bboxes[:len(tids)] = np.stack([
             scan.get_object_bbox(tid).reshape(-1) for tid in tids
@@ -712,7 +720,7 @@ class Joint3DDataset(Dataset):
         box_label_mask = np.zeros(MAX_NUM_OBJ)
         box_label_mask[:len(tids)] = 1
         
-        return bboxes, box_label_mask, point_instance_label
+        return bboxes, box_label_mask, point_instance_label, gt_masks
 
     def _get_scene_objects(self, scan):
         # Objects to keep
@@ -864,6 +872,7 @@ class Joint3DDataset(Dataset):
         anno = self.annos[index]
         scan = self.scans[anno['scan_id']]
         scan.pc = np.copy(scan.orig_pc)
+        superpoint = self.superpoints[anno['scan_id']]
 
         # step constract anno (used only for [scannet])
         self.random_utt = False
@@ -916,7 +925,7 @@ class Joint3DDataset(Dataset):
         point_cloud, augmentations, og_color = self._get_pc(anno, scan)
 
         # step "Target" boxes: append anchors if they're to be detected
-        gt_bboxes, box_label_mask, point_instance_label = \
+        gt_bboxes, box_label_mask, point_instance_label, gt_masks = \
             self._get_target_boxes(anno, scan)
 
         # step Scene gt boxes
@@ -980,6 +989,7 @@ class Joint3DDataset(Dataset):
             'center_label': gt_bboxes[:, :3].astype(np.float32),
             'sem_cls_label': _labels.astype(np.int64),
             'size_gts': gt_bboxes[:, 3:].astype(np.float32),
+            'gt_masks': gt_masks.astype(np.int64),
         }
         ret_dict.update({
             "scan_ids": anno['scan_id'],
@@ -1035,7 +1045,8 @@ class Joint3DDataset(Dataset):
                 class_ids[anno['target_id']]
                 if isinstance(anno['target_id'], int)
                 else class_ids[anno['target_id'][0]]
-            )
+            ),
+             "superpoint": torch.from_numpy(superpoint)
         })
 
         return ret_dict
