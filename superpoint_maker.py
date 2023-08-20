@@ -23,29 +23,31 @@ def unpickle_data(file_name, python2_to_3=False):
     in_file.close()
 
 
-def generate_superpoint():
-    data_path = r"/userhome/backup_lhj/zyx/dataset/pointcloud/data_for_eda/scannet_others_processed/"
-    split = "val"
+def generate_superpoint(data_path, data_path_scannet, save_path, split):
+
 
     scans = unpickle_data(f'{data_path}/{split}_v3scans.pkl')
     scans = list(scans)[0]
 
     for scan in scans:
-        spformer_file = os.path.join("/userhome/lyd/SPFormer/data/scannetv2", split, scan + "_vh_clean_2.ply")
+        spformer_file = os.path.join(data_path_scannet, split, scan + "_vh_clean_2.ply")
         mesh = o3d.io.read_triangle_mesh(spformer_file)
         vertices = torch.tensor(np.array(mesh.vertices), dtype=torch.float32)
         faces = torch.tensor(np.array(mesh.triangles), dtype=torch.int64)
         superpoint = segmentator.segment_mesh(vertices, faces)
         select_idx = torch.tensor(scans[scan].choices)
         superpoint = torch.index_select(superpoint, 0, select_idx).numpy()
-        torch.save(superpoint, os.path.join("/userhome/lyd/RES/superpoint", split, scan + "_superpoint.pth"))
+        torch.save(superpoint, os.path.join(data_path, "superpoints", split, scan + "_superpoint.pth"))
         print("Saving " + scan)
 
     print("Done.")
 
 
 if __name__ == '__main__':
-    generate_superpoint()
+    data_path = r"/path/to/scanrefer"
+    data_path_scannet = r"/path/to/scannet"
+    split = 'train'
+    generate_superpoint(data_path=data_path, data_path_scannet=data_path_scannet, split=split)
 
 
 

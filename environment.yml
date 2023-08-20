@@ -1,4 +1,4 @@
-name: EDA
+name: 3dreftr
 channels:
   - pytorch
   - conda-forge

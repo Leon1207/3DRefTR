@@ -1,19 +1,13 @@
-## TODO
-+ [ ] introduce spconv as backbone
-+ [ ] replace seedpoints with superpoints for kps
-+ [ ] add segmentation head in each decoder layer and introduce segmentation GT in training for 3D-RES
-+ [ ] Visualization
-
 ## 0. Installation
 
 + **(1)** Install environment with `environment.yml` file:
   ```
-  conda env create -f environment.yml --name EDA
+  conda env create -f environment.yml --name 3dreftr
   ```
   + or you can install manually:
     ```
-    conda create -n EDA python=3.7
-    conda activate EDA
+    conda create -n 3dreftr python=3.7
+    conda activate 3dreftr
     conda install pytorch==1.9.0 torchvision==0.10.0 cudatoolkit=11.1 -c pytorch -c nvidia
     pip install numpy ipython psutil traitlets transformers termcolor ipdb scipy tensorboardX h5py wandb plyfile tabulate
     ```
@@ -28,6 +22,8 @@
   cd ~/EDA
   sh init.sh
   ```
++ **(4)** Install segmentator from this https://github.com/Karbo123/segmentator
+
 
 ## 1. [TODO] Quick visualization demo 
 + [ ] Visualization
@@ -92,6 +88,11 @@ The final required files are as follows:
   wget https://huggingface.co/roberta-base/resolve/main/pytorch_model.bin
   ```
 + **[8] checkpoints**: Our pre-trained models (see next step).
++ **[9] superpoints**: Prepare superpoints for each scene.
+  ```
+  cd [DATA_ROOT]
+  python superpoint_maker.py  # modify data_root & split
+  ```
 
 ## 3. Models
 

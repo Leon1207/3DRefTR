@@ -126,7 +126,7 @@ class Joint3DDataset(Dataset):
         # fetch superpoints
         self.superpoints = {}
         for scan in self.scans:
-            superpoint = torch.load(os.path.join("/userhome/lyd/RES/superpoint", self.split, scan + "_superpoint.pth"))
+            superpoint = torch.load(os.path.join(f'{self.data_path}/superpoints', self.split, scan + "_superpoint.pth"))
             self.superpoints[scan] = superpoint
         
         # step 4. load text dataset
@@ -273,7 +273,7 @@ class Joint3DDataset(Dataset):
                 'anchor_ids': [],   
                 'dataset': 'scanrefer'
             }
-            for anno in reader[:100]
+            for anno in reader
             if anno['scene_id'] in scan_ids
         ]
 
