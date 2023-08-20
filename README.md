@@ -87,7 +87,7 @@ The final required files are as follows:
   rm -rf pytorch_model.bin
   wget https://huggingface.co/roberta-base/resolve/main/pytorch_model.bin
   ```
-+ **[8] checkpoints**: Our pre-trained models (see next step).
++ **[8] checkpoints**: Our pre-trained models (see 3. Models).
 + **[9] ScanNetv2**: Prepare the preporcessed ScanNetv2 dataset follow "Data Preparation" section from https://github.com/sunjiahao1999/SPFormer, obtaining the dataset file with the following structure:
 ```
 ScanNetv2
@@ -114,8 +114,8 @@ ScanNetv2
 |ScanRefer/3DRefTR-SP (Single-Stage)| 54.43 | 40.23 |[OneDrive]()
 |ScanRefer/3DRefTR-HR| 55.04 | 41.24 |[OneDrive]()
 |ScanRefer/3DRefTR-HR (Single-Stage)| 54.40 | 40.75 |[OneDrive]()
-|SR3D | 68.45 | 44.61 | [OneDrive]() 
-|NR3D | 52.55 | 36.17 | [OneDrive]() 
+|SR3D/3DRefTR-SP | 68.45 | 44.61 | [OneDrive]() 
+|NR3D/3DRefTR-SP | 52.55 | 36.17 | [OneDrive]() 
 
 ## 4. Training
 
