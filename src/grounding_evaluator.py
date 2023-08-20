@@ -54,7 +54,7 @@ class GroundingEvaluator:
     """
 
     def __init__(self, only_root=True, thresholds=[0.25, 0.5],
-                 topks=[1, 5, 10], prefixes=[], filter_non_gt_boxes=False, logger=None):
+                 topks=[1, 5, 10], prefixes=[], filter_non_gt_boxes=False, logger=None, model=None):
         """Initialize accumulators."""
         self.only_root = only_root
         self.thresholds = thresholds
@@ -63,6 +63,7 @@ class GroundingEvaluator:
         self.filter_non_gt_boxes = filter_non_gt_boxes
         self.reset()
         self.logger = logger
+        self.model = model
         self.visualization_pred = False
         self.visualization_gt = False
         self.bad_case_visualization = False
@@ -574,15 +575,20 @@ class GroundingEvaluator:
             sem_scores = sem_scores_
 
         # Parse predictions
-        pred_masks = []
-        for bs in range(len(end_points['last_pred_masks'])):
-            pred_masks_ = end_points['last_pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
-            pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
-            superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
-            pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
-            pred_masks.append(pred_masks_.squeeze(0))
+        if self.model == "ThreeDRefTR_SP":
+            pred_masks = []
+            for bs in range(len(end_points['last_pred_masks'])):
+                pred_masks_ = end_points['last_pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
+                pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
+                superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
+                pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
+                pred_masks.append(pred_masks_.squeeze(0))
 
-        pred_masks = torch.stack(pred_masks, dim=0)  # (B, 256, 50000)
+            pred_masks = torch.stack(pred_masks, dim=0)  # (B, 256, 50000)
+        elif self.model == "ThreeDRefTR_HR":
+            pred_masks = end_points['last_pred_masks'] # ([B, 256, 50000])
+            pred_masks = (pred_masks.sigmoid() > 0.5).int()
+
 
         # Highest scoring box -> iou
         for bid in range(len(positive_map)):
@@ -647,15 +653,19 @@ class GroundingEvaluator:
             auxi_entity_positive_map, rel_positive_map, gt_masks = self._parse_gt_mask(end_points)    
         
         # Parse predictions
-        pred_masks = []
-        for bs in range(len(end_points['last_pred_masks'])):
-            pred_masks_ = end_points['last_pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
-            pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
-            superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
-            pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
-            pred_masks.append(pred_masks_.squeeze(0))
+        if self.model == "ThreeDRefTR_SP":
+            pred_masks = []
+            for bs in range(len(end_points['last_pred_masks'])):
+                pred_masks_ = end_points['last_pred_masks'][bs].unsqueeze(0)  # ([1, 256, super_num])
+                pred_masks_ = (pred_masks_.sigmoid() > 0.5).int()
+                superpoints = end_points['superpoints'][bs].unsqueeze(0)  # (1, 50000)
+                pred_masks_ = torch.gather(pred_masks_, 2, superpoints.unsqueeze(1).expand(-1, 256, -1))  # (1, 256, 50000)
+                pred_masks.append(pred_masks_.squeeze(0))
 
-        pred_masks = torch.stack(pred_masks, dim=0)  # (B, 256, 50000)
+            pred_masks = torch.stack(pred_masks, dim=0)  # (B, 256, 50000)
+        elif self.model == "ThreeDRefTR_HR":
+            pred_masks = end_points['last_pred_masks'] # ([B, 256, 50000])
+            pred_masks = (pred_masks.sigmoid() > 0.5).int()
         
         # step compute similarity between vision and text
         proj_tokens = end_points['proj_tokens']             # text feature   (B, 256, 64)

@@ -9,8 +9,10 @@ TORCH_DISTRIBUTED_DEBUG=INFO CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.
     --dataset sr3d --test_dataset sr3d \
     --detect_intermediate --joint_det \
     --use_soft_token_loss --use_contrastive_align \
-    --log_dir ~/DATA_ROOT/output/logs/bdetr \
+    --log_dir ~/DATA_ROOT/output/logs \
     --lr_decay_epochs 150 \
     --butd_cls --self_attend \
-    --checkpoint_path ~/DATA_ROOT/checkpoints/SR3D_68_1.pth \
-    --eval
+    --checkpoint_path ~/DATA_ROOT/checkpoints/ckpt.pth \
+    --eval \
+    --model ThreeDRefTR_HR \
+    --exp ThreeDRefTR_HR \

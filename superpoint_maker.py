@@ -23,7 +23,7 @@ def unpickle_data(file_name, python2_to_3=False):
     in_file.close()
 
 
-def generate_superpoint(data_path, data_path_scannet, save_path, split):
+def generate_superpoint(data_path, data_path_scannet, split):
 
 
     scans = unpickle_data(f'{data_path}/{split}_v3scans.pkl')
@@ -44,8 +44,8 @@ def generate_superpoint(data_path, data_path_scannet, save_path, split):
 
 
 if __name__ == '__main__':
-    data_path = r"/path/to/scanrefer"
-    data_path_scannet = r"/path/to/scannet"
+    data_path = r"/path/to/scanrefer"  # ScanRefer path
+    data_path_scannet = r"/path/to/scannetv2"  # ScanNetv2 path
     split = 'train'
     generate_superpoint(data_path=data_path, data_path_scannet=data_path_scannet, split=split)
 

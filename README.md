@@ -19,10 +19,10 @@
   ```
 + **(3)** Compile pointnet++
   ```
-  cd ~/EDA
+  cd ~/3DRefTR
   sh init.sh
   ```
-+ **(4)** Install segmentator from this https://github.com/Karbo123/segmentator
++ **(4)** Install segmentator from https://github.com/Karbo123/segmentator
 
 
 ## 1. [TODO] Quick visualization demo 
@@ -47,7 +47,7 @@ The final required files are as follows:
 │	├── [5] group_free_pred_bboxes/  # detected boxes (optional)
 │	├── [6] gf_detector_l6o256.pth   # pointnet++ checkpoint (optional)
 │	├── [7] roberta-base/     # roberta pretrained language model
-│	├── [8] checkpoints/      # EDA pretrained models
+│	├── [8] checkpoints/      # 3dreftr pretrained models
 ```
 
 + **[1] [2] Prepare ScanNet Point Clouds Data**
@@ -88,7 +88,19 @@ The final required files are as follows:
   wget https://huggingface.co/roberta-base/resolve/main/pytorch_model.bin
   ```
 + **[8] checkpoints**: Our pre-trained models (see next step).
-+ **[9] superpoints**: Prepare superpoints for each scene.
++ **[9] ScanNetv2**: Prepare the preporcessed ScanNetv2 dataset follow "Data Preparation" section from https://github.com/sunjiahao1999/SPFormer, obtaining the dataset file with the following structure:
+```
+ScanNetv2
+├── data
+│   ├── scannetv2
+│   │   ├── scans
+│   │   ├── scans_test
+│   │   ├── train
+│   │   ├── val
+│   │   ├── test
+│   │   ├── val_gt
+```
++ **[10] superpoints**: Prepare superpoints for each scene preprocessed from Step. 9.
   ```
   cd [DATA_ROOT]
   python superpoint_maker.py  # modify data_root & split
@@ -96,35 +108,37 @@ The final required files are as follows:
 
 ## 3. Models
 
-|Dataset  | mAP@0.25 | mAP@0.5 | Model | Log (train) | Log (test)
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|ScanRefer| 54.59 | 42.26 |[OneDrive](https://1drv.ms/u/s!AsnjK0KGPk10gYBa4hc26m5ZFkVPZw?e=zPN55r)*| [54_59.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYBebAdozXnOgmm1YQ?e=H787s9)<sup>1</sup> / [54_44.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYo27zspU40yhrF09A?e=8eRW6V)<sup>2</sup> | [log.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYo-0fAXOoU1_sS6Bw?e=z8ANiN)
-|ScanRefer (Single-Stage)| 53.83 | 41.70 |[OneDrive](https://1drv.ms/u/s!AsnjK0KGPk10gYBbGKhHSJXohqyruQ?e=oDFmSq)| [53_83.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYBgx7E7P0NTBwOegQ?e=jdpEdp)<sup>1</sup> / [53_47.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYo4_zeWH0e_Bq2FXA?e=FnLW0Y)<sup>2</sup> | [log.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYo_ImRculQguFikiA?e=iLf0Wz)
-|SR3D | 68.1 | - | [OneDrive](https://1drv.ms/u/s!AsnjK0KGPk10gYBcrAVJXd3w9Ckd7w?e=DWpDz8) | [68_1.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYBiOCKlsxFaoQo6yA?e=BXMBgb)<sup>1</sup> / [67_6.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYo8kFoHKhsMIGhWrg?e=LglnIR)<sup>2</sup> | [log.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYpB05GFrJm0HIPcsg?e=SmYefu)
-|NR3D | 52.1 | - | [OneDrive](https://1drv.ms/u/s!AsnjK0KGPk10gYBZFKbUir4KH37lhQ?e=FwoGCW) | [52_1.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYBdNqMTotO8ai-npQ?e=lUTgka)<sup>1</sup> / [54_7.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYo6J5tuU7RKTS3d-Q?e=S2GrU7)<sup>2</sup> | [log.txt](https://1drv.ms/t/s!AsnjK0KGPk10gYpASOJhMDS1ixg9QA?e=uaQCA6)
-
-> `*`: This model is also used to evaluate the new task of **grounding without object names**, with performances of 26.5% and 21.6% for acc@0.25 and acc@0.5.    
-`1`: The log of the performance we **reported in the paper**.   
-`2`: The log of the performance we **retrain the model** with this open-released repository.
+|Dataset/Model  | REC mAP@0.25 | RES mIoU | Model |
+|:---:|:---:|:---:|:---:|
+|ScanRefer/3DRefTR-SP| 55.45 | 40.76 |[OneDrive]()
+|ScanRefer/3DRefTR-SP (Single-Stage)| 54.43 | 40.23 |[OneDrive]()
+|ScanRefer/3DRefTR-HR| 55.04 | 41.24 |[OneDrive]()
+|ScanRefer/3DRefTR-HR (Single-Stage)| 54.40 | 40.75 |[OneDrive]()
+|SR3D | 68.45 | 44.61 | [OneDrive]() 
+|NR3D | 52.55 | 36.17 | [OneDrive]() 
 
 ## 4. Training
 
-+ Please specify the paths of `--data_root`, `--log_dir`, `--pp_checkpoint` in the `train_*.sh` script first. We use four or two 24-GB 3090 GPUs for training with a batch size of 12 by default.
++ Please specify the paths of `--data_root`, `--log_dir`, `--pp_checkpoint` in the `train_*.sh` script first.
 + For **ScanRefer** training
   ```
-  sh scripts/train_scanrefer.sh
+  sh scripts/train_scanrefer_3dreftr_hr.sh
+  sh scripts/train_scanrefer_3dreftr_sp.sh
   ```
 + For **ScanRefer (single stage)** training
   ```
-  sh scripts/train_scanrefer_single.sh
+  sh scripts/train_scanrefer_3dreftr_hr_single.sh
+  sh scripts/train_scanrefer_3dreftr_sp_single.sh
   ```
 + For **SR3D** training
   ```
-  sh scripts/train_sr3d.sh
+  sh scripts/train_sr3d_3dreftr_hr.sh
+  sh scripts/train_sr3d_3dreftr_sp.sh
   ```
 + For **NR3D** training
   ```
-  sh scripts/train_nr3d.sh
+  sh scripts/train_nr3d_3dreftr_hr.sh
+  sh scripts/train_nr3d_3dreftr_sp.sh
   ```
 
 ## 5. Evaluation
@@ -132,41 +146,43 @@ The final required files are as follows:
 + Please specify the paths of `--data_root`, `--log_dir`, `--checkpoint_path` in the `test_*.sh` script first.
 + For **ScanRefer** evaluation
   ```
-  sh scripts/test_scanrefer.sh
+  sh scripts/test_scanrefer_3dreftr_hr.sh
+  sh scripts/test_scanrefer_3dreftr_sp.sh
   ```
-  + **New task: grounding without object names**. Please first download our [new annotation](https://1drv.ms/u/s!AsnjK0KGPk10gYBmrVFyVts3QBpyww?e=eK2zQw), then give the path of `--wo_obj_name` in the script and run:
-    ```
-    sh scripts/test_scanrefer_wo_obj_name.sh
-    ```
 + For **ScanRefer (single stage)** evaluation
   ```
-  sh scripts/test_scanrefer_single.sh
+  sh scripts/test_scanrefer_3dreftr_hr_single.sh
+  sh scripts/test_scanrefer_3dreftr_sp_single.sh
   ```
 + For **SR3D** evaluation
   ```
-  sh scripts/test_sr3d.sh
+  sh scripts/test_sr3d_3dreftr_hr.sh
+  sh scripts/test_sr3d_3dreftr_sp.sh
   ```
 + For **NR3D** evaluation
   ```
-  sh scripts/test_nr3d.sh
+  sh scripts/test_nr3d_3dreftr_hr.sh
+  sh scripts/test_nr3d_3dreftr_sp.sh
   ```
 
-## 6. Acknowledgements
+## 6. Visualization
+We showing visualization via wandb for kps points, bad case analyse, predict/ground_truth masks and box.
+```
+# src/groungd_evaluation.py  line 66 ~ 70
+self.visualization_pred = False
+self.visualization_gt = False
+self.bad_case_visualization = False
+self.kps_points_visualization = False
+self.bad_case_threshold = 0.15
+```
 
-We are quite grateful for [BUTD-DETR](https://github.com/nickgkan/butd_detr), [GroupFree](https://github.com/zeliu98/Group-Free-3D), [ScanRefer](https://github.com/daveredrum/ScanRefer), and [SceneGraphParser](https://github.com/vacancy/SceneGraphParser).
+## 7. Acknowledgements
 
-## 7. Citation
+We are quite grateful for [EDA](https://github.com/yanmin-wu/EDA), [SPFormer](https://github.com/sunjiahao1999/SPFormer), [BUTD-DETR](https://github.com/nickgkan/butd_detr), [GroupFree](https://github.com/zeliu98/Group-Free-3D), [ScanRefer](https://github.com/daveredrum/ScanRefer), and [SceneGraphParser](https://github.com/vacancy/SceneGraphParser).
+
+## 8. Citation
 
 If you find our work useful in your research, please consider citing:
 ```
-@inproceedings{wu2022eda,
-  title={EDA: Explicit Text-Decoupling and Dense Alignment for 3D Visual Grounding},
-  author={Wu, Yanmin and Cheng, Xinhua and Zhang, Renrui and Cheng, Zesen and Zhang, Jian},
-  booktitle={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year={2023}
-}
+
 ```
-
-## 8. Contact
-
-If you have any question about this project, please feel free to contact [Yanmin Wu](https://yanmin-wu.github.io/): wuyanminmax[AT]gmail.com

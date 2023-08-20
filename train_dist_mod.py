@@ -162,7 +162,8 @@ class TrainTester(BaseTrainTester):
             only_root=True, thresholds=[0.25, 0.5],     # TODO only_root=True
             topks=[1, 5, 10], prefixes=prefixes,
             filter_non_gt_boxes=args.butd_cls,
-            logger=self.logger
+            logger=self.logger,
+            model=args.model
         )
 
         # NOTE Main eval branch
