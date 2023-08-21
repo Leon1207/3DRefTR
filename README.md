@@ -27,10 +27,12 @@
 
 ## 1. Quick visualization demo 
 We showing visualization via wandb for superpoints, kps points, bad case analyse, predict/ground_truth masks and box.
++ superpoints in 'src/joint_det_dataset.py' line 71
 ```
-# superpoints in 'src/joint_det_dataset.py' line 71
 self.visualization_superpoint = False
-# others in 'src/groungd_evaluation.py' line 66 ~ 70
+```
++ others in 'src/groungd_evaluation.py' line 66 ~ 70
+```
 self.visualization_pred = False
 self.visualization_gt = False
 self.bad_case_visualization = False
@@ -119,12 +121,12 @@ ScanNetv2
 
 |Dataset/Model  | REC mAP@0.25 | RES mIoU | Model |
 |:---:|:---:|:---:|:---:|
-|ScanRefer/3DRefTR-SP| 55.45 | 40.76 |[OneDrive]()
-|ScanRefer/3DRefTR-SP (Single-Stage)| 54.43 | 40.23 |[OneDrive]()
-|ScanRefer/3DRefTR-HR| 55.04 | 41.24 |[OneDrive]()
-|ScanRefer/3DRefTR-HR (Single-Stage)| 54.40 | 40.75 |[OneDrive]()
-|SR3D/3DRefTR-SP | 68.45 | 44.61 | [OneDrive]() 
-|NR3D/3DRefTR-SP | 52.55 | 36.17 | [OneDrive]() 
+|ScanRefer/3DRefTR-SP| 55.45 | 40.76 |[GoogleDrive](https://drive.google.com/file/d/1--489HTfjOCuK6ibQ92G2Blm09eRTnfL/view?usp=sharing)
+|ScanRefer/3DRefTR-SP (Single-Stage)| 54.43 | 40.23 |[GoogleDrive](https://drive.google.com/file/d/1kMWl4XfRfw9aVVmGektO5CYaHag3kIUI/view?usp=sharing)
+|ScanRefer/3DRefTR-HR| 55.04 | 41.24 |[GoogleDrive](https://drive.google.com/file/d/1gThEp7QwnlCioUyTEQxT3jbsUyCM5BSK/view?usp=sharing)
+|ScanRefer/3DRefTR-HR (Single-Stage)| 54.40 | 40.75 |[GoogleDrive](https://drive.google.com/file/d/1qCybMQCnhuvikn9O-H90S9l82KRi1Tzq/view?usp=sharing)
+|SR3D/3DRefTR-SP | 68.45 | 44.61 | [GoogleDrive](https://drive.google.com/file/d/1AtqDwpVVAEHDtkiuJnC9EFpGK48nEh9s/view?usp=sharing) 
+|NR3D/3DRefTR-SP | 52.55 | 36.17 | [GoogleDrive](https://drive.google.com/file/d/1Y4SXRz3snPIeRxzCVMqs3AMfWC7JyGVW/view?usp=sharing) 
 
 ## 4. Training
 
