@@ -1,3 +1,5 @@
+
+
 ## 0. Installation
 
 + **(1)** Install environment with `environment.yml` file:
@@ -178,7 +180,7 @@ ScanNetv2
 
 ## 6. Acknowledgements
 
-We are quite grateful for [EDA](https://github.com/yanmin-wu/EDA), [SPFormer](https://github.com/sunjiahao1999/SPFormer), [BUTD-DETR](https://github.com/nickgkan/butd_detr), [GroupFree](https://github.com/zeliu98/Group-Free-3D), [ScanRefer](https://github.com/daveredrum/ScanRefer), and [SceneGraphParser](https://github.com/vacancy/SceneGraphParser).
+This repository is built on reusing codes of [EDA](https://github.com/yanmin-wu/EDA). We recommend using their code repository in your research and reading the [related article](https://arxiv.org/pdf/2209.14941.pdf). We are also quite grateful for [SPFormer](https://github.com/sunjiahao1999/SPFormer), [BUTD-DETR](https://github.com/nickgkan/butd_detr), [GroupFree](https://github.com/zeliu98/Group-Free-3D), [ScanRefer](https://github.com/daveredrum/ScanRefer), and [SceneGraphParser](https://github.com/vacancy/SceneGraphParser).
 
 ## 7. Citation
 
