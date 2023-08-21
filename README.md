@@ -25,9 +25,18 @@
 + **(4)** Install segmentator from https://github.com/Karbo123/segmentator
 
 
-## 1. [TODO] Quick visualization demo 
-+ [ ] Visualization
-+ [ ] Text-decoupling demo
+## 1. Quick visualization demo 
+We showing visualization via wandb for superpoints, kps points, bad case analyse, predict/ground_truth masks and box.
+```
+# superpoints in 'src/joint_det_dataset.py' line 71
+self.visualization_superpoint = False
+# others in 'src/groungd_evaluation.py' line 66 ~ 70
+self.visualization_pred = False
+self.visualization_gt = False
+self.bad_case_visualization = False
+self.kps_points_visualization = False
+self.bad_case_threshold = 0.15
+```
 
 ## 2. Data preparation
 
@@ -165,22 +174,11 @@ ScanNetv2
   sh scripts/test_nr3d_3dreftr_sp.sh
   ```
 
-## 6. Visualization
-We showing visualization via wandb for kps points, bad case analyse, predict/ground_truth masks and box.
-```
-# src/groungd_evaluation.py  line 66 ~ 70
-self.visualization_pred = False
-self.visualization_gt = False
-self.bad_case_visualization = False
-self.kps_points_visualization = False
-self.bad_case_threshold = 0.15
-```
-
-## 7. Acknowledgements
+## 6. Acknowledgements
 
 We are quite grateful for [EDA](https://github.com/yanmin-wu/EDA), [SPFormer](https://github.com/sunjiahao1999/SPFormer), [BUTD-DETR](https://github.com/nickgkan/butd_detr), [GroupFree](https://github.com/zeliu98/Group-Free-3D), [ScanRefer](https://github.com/daveredrum/ScanRefer), and [SceneGraphParser](https://github.com/vacancy/SceneGraphParser).
 
-## 8. Citation
+## 7. Citation
 
 If you find our work useful in your research, please consider citing:
 ```

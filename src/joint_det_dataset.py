@@ -68,7 +68,7 @@ class Joint3DDataset(Dataset):
         # self.augment = False
         self.use_multiview = use_multiview
         self.data_path = data_path
-        self.visualize = False  # manually set this to True to debug
+        self.visualization_superpoint = False  # manually set this to True to debug
         self.butd = butd
         self.butd_gt = butd_gt
         self.butd_cls = butd_cls
@@ -139,8 +139,8 @@ class Joint3DDataset(Dataset):
                     _annos = self.load_annos(dset)
                     self.annos += (_annos * cnt)
 
-        # if self.visualize:
-        #     wandb.init(project="vis", name="debug")
+        if self.visualization_superpoint:
+            wandb.init(project="vis", name="superpoint")
 
     # BRIEF load text data
     def load_annos(self, dset):
@@ -972,8 +972,8 @@ class Joint3DDataset(Dataset):
             detected_class_ids[all_bbox_label_mask] = classes[classes > -1]
 
         # Visualize for debugging
-        if self.visualize and anno['dataset'].startswith('sr3d'):
-            self._visualize_scene(anno, point_cloud, og_color, all_bboxes)
+        if self.visualization_superpoint and anno['dataset'].startswith('sr3d'):
+            self._visualize_superpoint(anno, point_cloud, og_color, all_bboxes)
 
         # Return
         _labels = np.zeros(MAX_NUM_OBJ)
@@ -1085,73 +1085,108 @@ class Joint3DDataset(Dataset):
                 augment = False
         return augment
 
-    def _visualize_scene(self, anno, point_cloud, og_color, all_bboxes):
-        target_id = anno['target_id']
-        distractor_ids = np.array(
-            anno['distractor_ids']
-            + [-1] * (10 - len(anno['distractor_ids']))
-        ).astype(int)
-        anchor_ids = np.array(
-            anno['anchor_ids']
-            + [-1] * (10 - len(anno['anchor_ids']))
-        ).astype(int)
+    # def _visualize_scene(self, anno, point_cloud, og_color, all_bboxes):
+    #     target_id = anno['target_id']
+    #     distractor_ids = np.array(
+    #         anno['distractor_ids']
+    #         + [-1] * (10 - len(anno['distractor_ids']))
+    #     ).astype(int)
+    #     anchor_ids = np.array(
+    #         anno['anchor_ids']
+    #         + [-1] * (10 - len(anno['anchor_ids']))
+    #     ).astype(int)
+    #     point_cloud[:, 3:] = (og_color + self.mean_rgb) * 256
+
+    #     all_boxes_points = box2points(all_bboxes[..., :6])
+
+    #     target_box = all_boxes_points[target_id]
+    #     anchors_boxes = all_boxes_points[[
+    #         i.item() for i in anchor_ids if i != -1
+    #     ]]
+    #     distractors_boxes = all_boxes_points[[
+    #         i.item() for i in distractor_ids if i != -1
+    #     ]]
+
+    #     wandb.log({
+    #         "ground_truth_point_scene": wandb.Object3D({
+    #             "type": "lidar/beta",
+    #             "points": point_cloud,
+    #             "boxes": np.array(
+    #                 [  # target
+    #                     {
+    #                         "corners": target_box.tolist(),
+    #                         "label": "target",
+    #                         "color": [0, 255, 0]
+    #                     }
+    #                 ]
+    #                 + [  # anchors
+    #                     {
+    #                         "corners": c.tolist(),
+    #                         "label": "anchor",
+    #                         "color": [0, 0, 255]
+    #                     }
+    #                     for c in anchors_boxes
+    #                 ]
+    #                 + [  # distractors
+    #                     {
+    #                         "corners": c.tolist(),
+    #                         "label": "distractor",
+    #                         "color": [0, 255, 255]
+    #                     }
+    #                     for c in distractors_boxes
+    #                 ]
+    #                 + [  # other
+    #                     {
+    #                         "corners": c.tolist(),
+    #                         "label": "other",
+    #                         "color": [255, 0, 0]
+    #                     }
+    #                     for i, c in enumerate(all_boxes_points)
+    #                     if i not in (
+    #                         [target_id]
+    #                         + anchor_ids.tolist()
+    #                         + distractor_ids.tolist()
+    #                     )
+    #                 ]
+    #             )
+    #         }),
+    #         "utterance": wandb.Html(anno['utterance']),
+    #     })
+
+
+    def _visualize_superpoint(self, anno, point_cloud, og_color):
+
+        from utils.scatter_util import scatter_mean
         point_cloud[:, 3:] = (og_color + self.mean_rgb) * 256
 
-        all_boxes_points = box2points(all_bboxes[..., :6])
-
-        target_box = all_boxes_points[target_id]
-        anchors_boxes = all_boxes_points[[
-            i.item() for i in anchor_ids if i != -1
-        ]]
-        distractors_boxes = all_boxes_points[[
-            i.item() for i in distractor_ids if i != -1
-        ]]
-
         wandb.log({
-            "ground_truth_point_scene": wandb.Object3D({
+            "pointcloud_scene": wandb.Object3D({
                 "type": "lidar/beta",
                 "points": point_cloud,
-                "boxes": np.array(
-                    [  # target
-                        {
-                            "corners": target_box.tolist(),
-                            "label": "target",
-                            "color": [0, 255, 0]
-                        }
-                    ]
-                    + [  # anchors
-                        {
-                            "corners": c.tolist(),
-                            "label": "anchor",
-                            "color": [0, 0, 255]
-                        }
-                        for c in anchors_boxes
-                    ]
-                    + [  # distractors
-                        {
-                            "corners": c.tolist(),
-                            "label": "distractor",
-                            "color": [0, 255, 255]
-                        }
-                        for c in distractors_boxes
-                    ]
-                    + [  # other
-                        {
-                            "corners": c.tolist(),
-                            "label": "other",
-                            "color": [255, 0, 0]
-                        }
-                        for i, c in enumerate(all_boxes_points)
-                        if i not in (
-                            [target_id]
-                            + anchor_ids.tolist()
-                            + distractor_ids.tolist()
-                        )
-                    ]
-                )
             }),
-            "utterance": wandb.Html(anno['utterance']),
         })
+
+        superpoint = torch.from_numpy(self.superpoints[anno['scan_id']])
+        point_cloud = torch.from_numpy(point_cloud)
+        white = torch.tensor([255.0, 255.0, 255.0])
+        super_cloud = scatter_mean(point_cloud, superpoint, dim=0)
+        super_cloud[:, 3:] = white
+
+        area_set = set(superpoint.tolist())
+        for area in area_set:
+            idx = superpoint == area
+            random_color = (torch.rand(3) * 256.0).double()
+            point_cloud[idx, 3:] = random_color
+
+        total_cloud = torch.cat([super_cloud, point_cloud], dim=0)
+
+        wandb.log({
+            "superpoint_scene": wandb.Object3D({
+                "type": "lidar/beta",
+                "points": total_cloud.numpy(),
+            }),
+        })
+
     
     def __len__(self):
         """Return number of utterances."""
