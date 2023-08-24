@@ -186,5 +186,12 @@ This repository is built on reusing codes of [EDA](https://github.com/yanmin-wu/
 
 If you find our work useful in your research, please consider citing:
 ```
-
+@misc{lin2023unified,
+      title={A Unified Framework for 3D Point Cloud Visual Grounding}, 
+      author={Haojia Lin and Yongdong Luo and Xiawu Zheng and Lijiang Li and Fei Chao and Taisong Jin and Donghao Luo and Chengjie Wang and Yan Wang and Liujuan Cao},
+      year={2023},
+      eprint={2308.11887},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
+}
 ```
