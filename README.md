@@ -1,4 +1,4 @@
-
+This is a PyTorch implementation of PointMetaBase proposed by our paper ["A Unified Framework for 3D Point Cloud Visual Grounding"](https://arxiv.org/abs/2308.11887)
 
 ## 0. Installation
 
